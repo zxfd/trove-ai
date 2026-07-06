@@ -540,7 +540,7 @@ export default function SettingsPage() {
       )}
 
       <div className="text-center text-xs text-[var(--text-tertiary)] py-4">
-        Trove AI v{versionInfo?.version || '1.3.0-dev'}
+        Trove AI v{versionInfo?.version || '1.3.0'}
       </div>
     </div>
   );

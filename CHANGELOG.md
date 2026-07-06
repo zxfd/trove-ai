@@ -4,6 +4,8 @@ All notable changes to Trove AI are documented here. This project adheres to [Se
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-07-06
+
 ### Added
 - **Knowledge-management Agent positioning** — README copy now frames Trove AI as an open-source, self-hostable knowledge-management Agent instead of only a read-later tool. The web AI assistant and WeChat Bot are documented as Agent entry points over the same private library.
 - **WeChat Bot media input** — the bot can now receive files, images, and voice messages. Files/images are downloaded from iLink media, decrypted, and uploaded through the existing `/api/articles/upload` pipeline; voice messages use `voice_item.text` when available and fall back to the transcription service before routing the text into the Agent. Outbound TTS/voice bubbles are intentionally not included.

@@ -19,7 +19,7 @@ router = APIRouter(prefix="/api/system", tags=["system"])
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 FRONTEND_DIR = PROJECT_ROOT / "frontend"
 APP_NAME = "Trove AI"
-APP_VERSION = os.getenv("TROVE_VERSION", "1.3.0-dev")
+APP_VERSION = os.getenv("TROVE_VERSION", "1.3.0")
 APP_REPO = os.getenv("TROVE_REPO_URL", "https://github.com/weaiw/trove-ai")
 APP_RELEASES_URL = f"{APP_REPO.rstrip('/')}/releases"
 
