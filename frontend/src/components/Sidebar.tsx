@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard, BookOpen, GitGraph, Route,
   Search, Settings, X, Sun, Moon, Menu,
-  Users, LogOut, Library
+  Users, LogOut, Library, Github
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useTheme } from '@/components/ThemeProvider';
@@ -109,6 +109,17 @@ export default function Sidebar() {
 
       {/* Bottom section */}
       <div className="border-t border-[var(--border-color)]">
+        <a
+          href="https://github.com/weaiw/trove-ai"
+          target="_blank"
+          rel="noreferrer"
+          className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+          title="GitHub 开源仓库"
+        >
+          <Github size={18} />
+          {!collapsed && <span className="text-sm">GitHub</span>}
+        </a>
+
         {/* Dark mode toggle */}
         <button
           onClick={toggleTheme}

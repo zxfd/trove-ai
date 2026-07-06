@@ -17,25 +17,32 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import binascii
 import html
 import json
 import logging
+import mimetypes
 import os
 import re
 import secrets
 import signal
 import sys
+import tempfile
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import AsyncIterator, Callable, Dict, Optional
+from urllib.parse import quote_plus
 from uuid import UUID
 
 import httpx
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import async_session
 from app.models import WechatAccount
+from app.services.transcription_service import transcription_service
 
 
 logging.basicConfig(
@@ -50,6 +57,14 @@ ILINK_APP_ID = "bot"
 ILINK_APP_CLIENT_VERSION = "132099"
 BOT_AGENT = "TroveBot/0.2-multi"
 LONGPOLL_TIMEOUT_S = 35
+WECHAT_CDN_BASE = "https://novac2c.cdn.weixin.qq.com/c2c"
+MAX_WECHAT_MEDIA_BYTES = 80 * 1024 * 1024
+
+UPLOADABLE_EXTENSIONS = {
+    ".pdf", ".docx", ".xlsx", ".pptx",
+    ".png", ".jpg", ".jpeg", ".webp", ".gif",
+    ".txt", ".html", ".htm", ".epub", ".csv", ".md",
+}
 
 URL_RE = re.compile(
     r"https?://[^\s一-鿿\"'<>{}|\\^`，。、；：！？（）【】《》]+",
@@ -64,6 +79,46 @@ COMPLEX_KEYWORDS = (
     "哪些", "全面", "系统讲", "系统总结", "汇总", "不同观点",
     "演进", "发展脉络", "区别和联系",
 )
+
+LIGHT_COMMANDS = {
+    "/最近": "列出我最近收藏的 10 篇文章，并简单概括这些内容主要集中在哪些主题。",
+    "最近": "列出我最近收藏的 10 篇文章，并简单概括这些内容主要集中在哪些主题。",
+    "/回顾": "根据我最近收藏和知识库内容，生成一份简短知识回顾，给出本周值得复习的主题。",
+    "回顾": "根据我最近收藏和知识库内容，生成一份简短知识回顾，给出本周值得复习的主题。",
+    "/整理": "帮我整理最近收藏，先给出归类和标签建议；如果需要改动知识库，请先列计划并等待我确认。",
+    "整理": "帮我整理最近收藏，先给出归类和标签建议；如果需要改动知识库，请先列计划并等待我确认。",
+}
+
+WRITE_TOOL_LABELS = {
+    "tag_articles": "打标签",
+    "move_to_folder": "归类到文件夹",
+    "link_articles": "建立知识关系",
+    "synthesize_concept": "合成概念页",
+    "configure_review": "配置复习简报",
+}
+
+
+def _confirm_summary(name: str, args: dict) -> str:
+    args = args or {}
+    tool_label = WRITE_TOOL_LABELS.get(name, name or "写操作")
+    details: list[str] = []
+    if isinstance(args.get("article_ids"), list):
+        details.append(f"影响文章：{len(args['article_ids'])} 篇")
+    if args.get("folder_name"):
+        details.append(f"目标文件夹：{args['folder_name']}")
+    if args.get("tag"):
+        details.append(f"标签：{args['tag']}")
+    if args.get("topic"):
+        details.append(f"主题：{args['topic']}")
+    if args.get("relation_type"):
+        details.append(f"关系：{args['relation_type']}")
+    if args.get("frequency_days"):
+        details.append(f"频率：每 {args['frequency_days']} 天")
+    if args.get("time_of_day"):
+        details.append(f"时间：{args['time_of_day']}")
+    lines = [f"待确认：{tool_label}"]
+    lines.extend(details)
+    return "\n".join(lines)
 
 
 def _is_complex_query(text: str) -> bool:
@@ -107,13 +162,90 @@ def _extract_url(text: str) -> Optional[str]:
     return m.group(0).rstrip(".,;:!?)]") if m else None
 
 
+def _safe_filename(name: str, fallback: str = "wechat-file") -> str:
+    cleaned = re.sub(r'[\\/:*?"<>|\r\n\t]+', " ", name or "").strip()
+    return cleaned[:120] or fallback
+
+
+def _guess_content_type(filename: str) -> str:
+    return mimetypes.guess_type(filename)[0] or "application/octet-stream"
+
+
+def _decode_media_aes_key(aes_key: str) -> Optional[bytes]:
+    """Decode iLink CDN AES key.
+
+    Observed formats:
+    - base64(raw 16 bytes)
+    - base64(32-byte ASCII hex string)
+    - occasionally plain 32-char hex string from image_item.aeskey
+    """
+    if not aes_key:
+        return None
+    raw = aes_key.strip()
+    try:
+        if re.fullmatch(r"[0-9a-fA-F]{32}", raw):
+            return bytes.fromhex(raw)
+        decoded = base64.b64decode(raw)
+        if len(decoded) == 16:
+            return decoded
+        if len(decoded) == 32 and re.fullmatch(rb"[0-9a-fA-F]{32}", decoded):
+            return bytes.fromhex(decoded.decode("ascii"))
+    except (binascii.Error, ValueError):
+        return None
+    return None
+
+
+def _aes_ecb_decrypt(ciphertext: bytes, key: bytes) -> bytes:
+    cipher = Cipher(algorithms.AES(key), modes.ECB())
+    decryptor = cipher.decryptor()
+    padded = decryptor.update(ciphertext) + decryptor.finalize()
+    if not padded:
+        return padded
+    pad = padded[-1]
+    if 1 <= pad <= 16 and padded.endswith(bytes([pad]) * pad):
+        return padded[:-pad]
+    return padded
+
+
+def _media_from_item(item: dict, item_key: str) -> Optional[dict]:
+    payload = item.get(item_key) or {}
+    media = payload.get("media") or {}
+    if media.get("encrypt_query_param"):
+        return media
+    return None
+
+
+def _sniff_image_ext(content: bytes) -> str:
+    if content.startswith(b"\x89PNG\r\n\x1a\n"):
+        return ".png"
+    if content.startswith(b"\xff\xd8\xff"):
+        return ".jpg"
+    if content.startswith(b"GIF87a") or content.startswith(b"GIF89a"):
+        return ".gif"
+    if content.startswith(b"RIFF") and content[8:12] == b"WEBP":
+        return ".webp"
+    return ".jpg"
+
+
+def _voice_suffix(encode_type: Optional[int]) -> str:
+    return {
+        1: ".pcm",
+        2: ".adpcm",
+        4: ".spx",
+        5: ".amr",
+        6: ".silk",
+        7: ".mp3",
+        8: ".spx",
+    }.get(encode_type or 0, ".mp3")
+
+
 # ── Trove AI backend calls (per-user via X-Act-As-User) ────────────────
 class TroveClient:
     def __init__(self, base_url: str, service_token: str):
         self.base_url = base_url.rstrip("/")
         self.token = service_token
-        # one shared httpx client; longer than long-poll for upload paths
-        self._client = httpx.AsyncClient(timeout=90.0)
+        # One shared httpx client; longer than long-poll for upload and Agent paths.
+        self._client = httpx.AsyncClient(timeout=150.0)
 
     async def close(self):
         await self._client.aclose()
@@ -123,6 +255,12 @@ class TroveClient:
             "Authorization": f"Bearer {self.token}",
             "X-Act-As-User": str(target_user_id),
             "Content-Type": "application/json",
+        }
+
+    def _auth_h(self, target_user_id: UUID) -> dict:
+        return {
+            "Authorization": f"Bearer {self.token}",
+            "X-Act-As-User": str(target_user_id),
         }
 
     async def add_article(self, target_user_id: UUID, url: str) -> tuple[bool, str]:
@@ -146,6 +284,39 @@ class TroveClient:
         except Exception:
             detail = r.text[:100]
         return False, f"❌ 添加失败 ({r.status_code})：{detail}"
+
+    async def upload_file(
+        self,
+        target_user_id: UUID,
+        filename: str,
+        content: bytes,
+        content_type: Optional[str] = None,
+    ) -> tuple[bool, str]:
+        content_type = content_type or _guess_content_type(filename)
+        try:
+            r = await self._client.post(
+                f"{self.base_url}/api/articles/upload",
+                headers=self._auth_h(target_user_id),
+                files={"file": (filename, content, content_type)},
+                timeout=240,
+            )
+        except Exception as e:
+            return False, f"❌ 上传失败：{type(e).__name__}"
+
+        if r.status_code == 201:
+            data = r.json()
+            title = (data.get("title") or filename)[:50]
+            return True, f"✅ 文件已入库：{title}\n\n我会继续自动生成摘要、标签和关键点。"
+
+        try:
+            detail = r.json().get("detail", "")
+        except Exception:
+            detail = r.text[:160]
+        if r.status_code == 400 and "Unsupported file format" in detail:
+            return False, "❌ 这个文件格式暂不支持入库。支持 PDF、Word、PPT、Excel、图片、TXT、Markdown、HTML、EPUB、CSV。"
+        if r.status_code == 413:
+            return False, f"❌ 文件太大：{detail or '超过当前上传限制'}"
+        return False, f"❌ 文件入库失败 ({r.status_code})：{detail[:120]}"
 
     async def research_stream(
         self, target_user_id: UUID, query: str, mode: str = "sequential"
@@ -226,6 +397,7 @@ class AccountWorker:
         self.lm = lm
         self._stop = asyncio.Event()
         self._task: Optional[asyncio.Task] = None
+        self._agent_state: dict[str, dict] = {}
 
     def start(self):
         self._task = asyncio.create_task(self._run(), name=f"wechat-{self.account_id}")
@@ -290,9 +462,141 @@ class AccountWorker:
         except Exception as e:
             logger.warning(f"[{self.account_id}] sendmessage failed: {e}")
 
+    async def _download_media(self, client: httpx.AsyncClient, media: dict) -> tuple[Optional[bytes], str]:
+        query_param = media.get("encrypt_query_param") or ""
+        if not query_param:
+            return None, "缺少媒体下载参数"
+        url = f"{WECHAT_CDN_BASE}/download?encrypted_query_param={quote_plus(query_param)}"
+        try:
+            async with client.stream("GET", url, timeout=90) as resp:
+                if resp.status_code != 200:
+                    return None, f"媒体下载失败 HTTP {resp.status_code}"
+                size = 0
+                chunks: list[bytes] = []
+                async for chunk in resp.aiter_bytes(64 * 1024):
+                    chunks.append(chunk)
+                    size += len(chunk)
+                    if size > MAX_WECHAT_MEDIA_BYTES:
+                        return None, "媒体超过 80MB，暂不支持"
+        except Exception as e:
+            return None, f"媒体下载失败：{type(e).__name__}"
+
+        ciphertext = b"".join(chunks)
+        key = _decode_media_aes_key(media.get("aes_key") or "")
+        if not key:
+            logger.warning(f"[{self.account_id}] media without valid aes_key; trying raw bytes")
+            return ciphertext, ""
+        try:
+            return _aes_ecb_decrypt(ciphertext, key), ""
+        except Exception as e:
+            logger.warning(f"[{self.account_id}] media decrypt failed: {e}")
+            return None, "媒体解密失败"
+
+    async def _handle_file_item(
+        self, client: httpx.AsyncClient, acct: WechatAccount,
+        sender: str, ctx: str, item: dict,
+    ) -> bool:
+        payload = item.get("file_item") or {}
+        media = _media_from_item(item, "file_item")
+        filename = _safe_filename(payload.get("file_name") or "wechat-file")
+        ext = os.path.splitext(filename.lower())[1]
+        if ext and ext not in UPLOADABLE_EXTENSIONS:
+            await self._send_text(
+                client, acct.base_url, acct.token, sender, ctx,
+                "❌ 这个文件格式暂不支持入库。支持 PDF、Word、PPT、Excel、图片、TXT、Markdown、HTML、EPUB、CSV。",
+            )
+            return True
+        if not media:
+            await self._send_text(client, acct.base_url, acct.token, sender, ctx, "❌ 没拿到这个文件的下载信息。")
+            return True
+
+        await self._send_text(client, acct.base_url, acct.token, sender, ctx, f"📎 收到文件，正在入库：{filename}")
+        content, err = await self._download_media(client, media)
+        if err or not content:
+            await self._send_text(client, acct.base_url, acct.token, sender, ctx, f"❌ {err or '文件为空'}")
+            return True
+
+        ok, reply = await self.lm.upload_file(acct.user_id, filename, content, _guess_content_type(filename))
+        logger.info(f"[{acct.account_id}] upload_file ok={ok} name={filename!r} bytes={len(content)}")
+        await self._send_text(client, acct.base_url, acct.token, sender, ctx, reply)
+        return True
+
+    async def _handle_image_item(
+        self, client: httpx.AsyncClient, acct: WechatAccount,
+        sender: str, ctx: str, item: dict,
+    ) -> bool:
+        media = _media_from_item(item, "image_item")
+        if not media:
+            return False
+        # Some iLink image payloads put a plain hex key at image_item.aeskey.
+        image_payload = item.get("image_item") or {}
+        if image_payload.get("aeskey") and not media.get("aes_key"):
+            media = {**media, "aes_key": image_payload.get("aeskey")}
+
+        await self._send_text(client, acct.base_url, acct.token, sender, ctx, "🖼️ 收到图片，正在入库…")
+        content, err = await self._download_media(client, media)
+        if err or not content:
+            await self._send_text(client, acct.base_url, acct.token, sender, ctx, f"❌ {err or '图片为空'}")
+            return True
+
+        ext = _sniff_image_ext(content)
+        filename = f"wechat-image-{int(time.time())}{ext}"
+        ok, reply = await self.lm.upload_file(acct.user_id, filename, content, _guess_content_type(filename))
+        logger.info(f"[{acct.account_id}] upload_image ok={ok} bytes={len(content)}")
+        await self._send_text(client, acct.base_url, acct.token, sender, ctx, reply)
+        return True
+
+    async def _handle_voice_item(
+        self, client: httpx.AsyncClient, acct: WechatAccount,
+        sender: str, ctx: str, item: dict,
+    ) -> bool:
+        payload = item.get("voice_item") or {}
+        transcript = (payload.get("text") or "").strip()
+        if transcript:
+            await self._send_text(client, acct.base_url, acct.token, sender, ctx, f"🎙️ 我听到的是：{transcript}")
+            await self._handle_agent(client, acct, sender, ctx, transcript)
+            return True
+
+        media = _media_from_item(item, "voice_item")
+        if not media:
+            await self._send_text(client, acct.base_url, acct.token, sender, ctx, "❌ 这条语音没有可识别文本，也没有下载信息。")
+            return True
+        await self._send_text(client, acct.base_url, acct.token, sender, ctx, "🎙️ 收到语音，正在识别…")
+        content, err = await self._download_media(client, media)
+        if err or not content:
+            await self._send_text(client, acct.base_url, acct.token, sender, ctx, f"❌ {err or '语音为空'}")
+            return True
+        if not transcription_service.available:
+            await self._send_text(client, acct.base_url, acct.token, sender, ctx, "❌ 语音识别服务还没配置，暂时无法识别这条语音。")
+            return True
+
+        suffix = _voice_suffix(payload.get("encode_type"))
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+            tmp.write(content)
+            tmp_path = Path(tmp.name)
+        try:
+            transcript = (await transcription_service._transcribe_local(tmp_path) or "").strip()
+        finally:
+            tmp_path.unlink(missing_ok=True)
+        if not transcript:
+            await self._send_text(client, acct.base_url, acct.token, sender, ctx, "❌ 这条语音没有识别出文字。")
+            return True
+        await self._send_text(client, acct.base_url, acct.token, sender, ctx, f"🎙️ 我听到的是：{transcript}")
+        await self._handle_agent(client, acct, sender, ctx, transcript)
+        return True
+
     async def _handle(self, client: httpx.AsyncClient, acct: WechatAccount, msg: dict):
         sender = msg.get("from_user_id") or ""
         ctx = msg.get("context_token") or ""
+        for it in (msg.get("item_list") or []):
+            item_type = it.get("type")
+            if item_type == 4 and await self._handle_file_item(client, acct, sender, ctx, it):
+                return
+            if item_type == 2 and await self._handle_image_item(client, acct, sender, ctx, it):
+                return
+            if item_type == 3 and await self._handle_voice_item(client, acct, sender, ctx, it):
+                return
+
         text = ""
         for it in (msg.get("item_list") or []):
             if it.get("type") == 1:
@@ -301,7 +605,7 @@ class AccountWorker:
 
         if not text:
             await self._send_text(client, acct.base_url, acct.token, sender, ctx,
-                                  "目前只支持文本消息（链接或问题）哦")
+                                  "目前支持文本、链接、文件、图片和语音。这个消息类型我还不会处理。")
             return
 
         text_stripped = text.strip()
@@ -312,14 +616,22 @@ class AccountWorker:
                 client, acct.base_url, acct.token, sender, ctx,
                 "📚 Trove AI 用法\n\n"
                 "• 直接发链接 → 自动存入你的知识库\n"
-                "• 直接发问题 → 自动判断走快路径（3-5s）或深度研究（20-40s）\n"
-                "  含「梳理/综述/对比/演化/哪些…」等词会自动深度研究\n"
-                "• /r <问题> → 强制 4 阶段研究（拆解→检索→综述→自审）\n"
-                "• /a <问题> → 强制工具型 Agent（ReAct 循环：自己选 search/read/list 工具）\n"
-                "• /c <主题> → 灵感创作（AI 一句话生成完整文章入库，30-90s）\n"
-                "  例：/c AI Agent 在 PM 工作流中的应用\n"
+                "• 直接发问题 → 知识管理 Agent 帮你办：\n"
+                "  ◦ 库内问答 / 最近收藏回顾 / 库内材料对比\n"
+                "  ◦ 找素材：『帮我从库里挑 5 篇做 AI Agent 综述的素材』\n"
+                "  ◦ 主题整理：『我最近收藏主要集中在哪些方向』\n"
+                "• 直接发文件、图片、语音 → 入库或转成 Agent 输入\n"
+                "• 轻命令：/最近 /回顾 /整理\n"
+                "• 含「梳理/综述/对比/演化…」等词 → 自动深度研究（20-40s）\n"
+                "• /r <问题> → 强制 4 阶段深度研究\n"
+                "• /c <主题> → 灵感创作（一句话生成完整文章入库）\n"
                 "• /help → 显示本帮助",
             )
+            return
+
+        # Lightweight natural commands for common mobile workflows.
+        if text_stripped in LIGHT_COMMANDS:
+            await self._handle_agent(client, acct, sender, ctx, LIGHT_COMMANDS[text_stripped])
             return
 
         url = _extract_url(text)
@@ -350,7 +662,7 @@ class AccountWorker:
                     "请在 /a 后面写具体问题。例：/a 帮我从库里挑 5 篇做 AI Agent 综述的素材",
                 )
                 return
-            await self._handle_research(client, acct, sender, ctx, query, mode="tool")
+            await self._handle_agent(client, acct, sender, ctx, query)
             return
 
         # Sequential research: explicit /r or /research prefix
@@ -372,10 +684,9 @@ class AccountWorker:
             )
             return
 
-        # Default: single-turn RAG (fast path)
-        reply = await self.lm.ask(acct.user_id, text)
-        logger.info(f"[{acct.account_id}] ask q={text[:40]!r} → {reply[:80]}")
-        await self._send_text(client, acct.base_url, acct.token, sender, ctx, reply)
+        # Default: knowledge-management Agent over the user's own library.
+        logger.info(f"[{acct.account_id}] agent q={text[:40]!r}")
+        await self._handle_agent(client, acct, sender, ctx, text_stripped)
 
     async def _handle_spark(
         self, client: httpx.AsyncClient, acct: WechatAccount,
@@ -419,6 +730,36 @@ class AccountWorker:
         if link:
             msg += f"\n\n📖 完整阅读：{link}"
         await self._send_text(client, acct.base_url, acct.token, sender, ctx, msg)
+
+    async def _handle_agent(
+        self, client: httpx.AsyncClient, acct: WechatAccount,
+        sender: str, ctx: str, query: str,
+    ):
+        """Knowledge-management Agent entry backed by /api/research/agent.
+
+        The open-source agent is read-only today (search/read/list recent). It can
+        help users understand and organize their knowledge, while write-side
+        confirmation flows are reserved for a future unified /api/agent endpoint.
+        """
+        await self._send_text(client, acct.base_url, acct.token, sender, ctx, "🤖 收到，正在处理…")
+        final_answer, tools = None, []
+        try:
+            async for ev in self.lm.research_stream(acct.user_id, query, mode="tool"):
+                st = ev.get("stage")
+                if st == "tool_call":
+                    tools.append(ev.get("data", {}).get("name", ""))
+                elif st == "final":
+                    final_answer = (ev.get("data", {}) or {}).get("answer")
+                elif st == "error":
+                    final_answer = "⚠️ " + ev.get("message", "出错了")
+        except Exception as e:
+            logger.exception(f"[{acct.account_id}] agent_chat crashed: {e}")
+            await self._send_text(client, acct.base_url, acct.token, sender, ctx, f"⚠️ Agent 出错：{type(e).__name__}")
+            return
+
+        trace = f"\n\n🔧 用了：{'、'.join(t for t in tools if t)}" if tools else ""
+        reply = (final_answer or "（没有回答）") + trace
+        await self._send_text(client, acct.base_url, acct.token, sender, ctx, reply)
 
     async def _handle_research(
         self, client: httpx.AsyncClient, acct: WechatAccount,
