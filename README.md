@@ -342,46 +342,6 @@ The plugin auto-detects already-synced articles via dual-OR (sync_state.json ∪
 
 ---
 
-## Roadmap
-
-### v1.1 — current
-- ✅ WeChat Channels (视频号) capture
-- ✅ Smart generic extraction (trafilatura → headless render → BeautifulSoup)
-- ✅ Article-scoped Q&A (📄 this-article / 📚 whole-library toggle)
-
-### v1.0
-- ✅ Multi-platform capture (8+ sources)
-- ✅ AI processing pipeline (summary / key-points / tags / embedding / mind-map)
-- ✅ RAG Q&A + semantic search
-- ✅ Auto knowledge graph + learning paths
-- ✅ WeChat Bot ingress
-- ✅ Obsidian sync plugin
-- ✅ Multi-tenant + revocable sync tokens
-- ✅ Self-host via Docker
-- ✅ Responsive UI for PC / pad / mobile
-
-### v1.1
-- 🔜 Browser extension (one-click clip from any tab)
-- 🔜 Image local download (offline-safe backup)
-- 🔜 Pocket / Omnivore import
-- 🔜 Better article deduplication
-- 🔜 PWA support for "add to home screen" on mobile
-
-### v1.2
-- More LLM providers (Claude, Gemini, Doubao native)
-- Per-user theme & language preferences
-- Bulk re-process articles with new AI prompts
-- Article version history
-
-### v2 — research
-- Obsidian community marketplace submission
-- Multi-vault Obsidian sync
-- Notion / Logseq / Reflect export
-- Audio podcast generation from saved articles
-- Daily / weekly digest emails
-
----
-
 ## FAQ
 
 <details>

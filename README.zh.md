@@ -341,41 +341,6 @@ HTTPS 自己用 **Caddy / Traefik / Nginx** 反代,或者直接挂 Cloudflare Tu
 
 ---
 
-## 路线图
-
-### v1.0 — 当前版本
-- ✅ 全平台采集(8+ 来源)
-- ✅ AI 处理流水线(摘要 / 关键点 / 标签 / 嵌入 / 思维导图)
-- ✅ RAG 问答 + 语义搜索
-- ✅ 自动知识图谱 + 学习路径
-- ✅ 微信 Bot 入口
-- ✅ Obsidian 同步插件
-- ✅ 多租户 + 可撤销同步 Token
-- ✅ Docker 自部署
-- ✅ PC / pad / 移动端响应式 UI
-
-### v1.1
-- 🔜 浏览器扩展(任意标签一键收藏)
-- 🔜 图片本地下载(完全离线备份)
-- 🔜 Pocket / Omnivore 导入
-- 🔜 文章去重增强
-- 🔜 PWA 支持(手机"添加到主屏幕")
-
-### v1.2
-- 更多 LLM 厂商(Claude · Gemini · 豆包原生)
-- 用户主题与语言偏好
-- 批量重新处理文章(用新 AI Prompt)
-- 文章版本历史
-
-### v2 — 研究中
-- Obsidian 社区市场提交
-- 多 vault Obsidian 同步
-- Notion · Logseq · Reflect 导出
-- 音频播客生成
-- 每日 / 每周摘要邮件
-
----
-
 ## 常见问题
 
 <details>
