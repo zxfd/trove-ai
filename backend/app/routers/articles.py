@@ -597,7 +597,7 @@ async def spark_create_article(
 # ---- File Upload: MarkItDown conversion ----
 ALLOWED_EXTENSIONS = {
     ".pdf", ".docx", ".xlsx", ".pptx",
-    ".png", ".jpg", ".jpeg", ".txt", ".html",
+    ".png", ".jpg", ".jpeg", ".webp", ".gif", ".txt", ".html", ".htm",
     ".epub", ".csv", ".md",
 }
 
@@ -608,6 +608,8 @@ ALLOWED_MIME_TYPES = {
     "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     "image/png",
     "image/jpeg",
+    "image/webp",
+    "image/gif",
     "text/plain",
     "text/html",
     "application/epub+zip",

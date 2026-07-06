@@ -2,7 +2,7 @@
 
 # Trove AI — 拾遗
 
-**为中文互联网打造的稍后阅读 + AI 知识库。**
+**开源、可私有化部署的知识管理 Agent，为中文互联网而生。**
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 [![后端: FastAPI](https://img.shields.io/badge/后端-FastAPI-009688)](https://fastapi.tiangolo.com)
@@ -21,11 +21,11 @@
 
 你收藏了 1000 篇文章。你只重新读过 5 篇。
 
-问题不是你存太多——问题是现在的工具把"收藏"和"阅读"当成了同一件事。微信收藏把它们埋了。**收藏 ≠ 阅读。** 这个落差,就是全部问题的根源。
+问题不是你存太多，而是大多数工具只负责“存下”，很少真正帮你“读懂、连起来、用起来”。微信收藏把资料埋起来，传统稍后阅读只把链接排队。**收藏 ≠ 知识管理。**
 
-**Pocket 在 2024 年关停。Omnivore 也关停了。** 用户精心收藏的内容,一夜之间全没了。
+Pocket、Omnivore 等工具相继退出或变化，也提醒我们：个人知识库不应该完全押在别人服务器上。
 
-**Trove AI 是一个可自部署的 AI 第二大脑**,把"先存下,晚点看"重新变回"真的读完、真的记住"。第一手为中文互联网而做(微信公众号 / 知乎 / 抖音 / 小红书 / B 站 / 头条 / 掘金 / CSDN),内置微信 Bot 入口 / 自动知识图谱 / Obsidian 单向同步。
+**Trove AI 是一个可自部署的知识管理 Agent**：网页 AI 助手和微信 Bot 都是入口，你可以让它查库、读文章、整理最近收藏、对比观点、生成学习路径，并把结果沉淀回自己的私有知识库。它第一手为中文互联网而做(微信公众号 / 知乎 / 抖音 / 小红书 / B 站 / 头条 / 掘金 / CSDN)，内置自动知识图谱、概念页、MCP 接入和 Obsidian 同步。
 
 它由你部署。也由你掌握。
 
@@ -44,8 +44,8 @@
 </td>
 <td width="50%" valign="top">
 
-#### 🧠 AI 替你干活
-每篇文章自动生成:AI 提取标题 · 5 句话摘要 · 3-5 个关键点 · 自动标签 · 平台感知作者识别 · 1024 维向量嵌入 · 思维导图 · 视频转译。
+#### 🧠 知识管理 Agent
+网页 AI 助手和微信 Bot 共用知识库能力，可以回答库内问题、回顾最近收藏、挑选素材、对比观点，并展示引用来源。
 
 </td>
 </tr>
@@ -73,7 +73,7 @@
 <td width="50%" valign="top">
 
 #### 💬 微信 Bot 入口
-转发文章 URL 给你的 bot → 5 秒内进库 + 自动摘要 + 自动打标签 + 推荐"和你以前看过的相关"。
+转发文章 URL、文件、图片或语音给你的 bot → 自动入库或转成 Agent 输入。移动端看到资料、想到问题，都可以直接丢给同一个知识库。
 
 </td>
 </tr>
@@ -101,7 +101,7 @@ JWT 鉴权 · 数据按用户隔离 · 同步 Token 可一键撤销 · 服务 To
 <td width="50%" valign="top">
 
 #### 🌐 万物可收
-网页链接 · 粘贴正文 · PDF · Word · Excel · PPT · EPUB · CSV · 自己写的笔记 · Spark 一句话生成全文。
+网页链接 · 粘贴正文 · PDF · Word · Excel · PPT · 图片 · EPUB · CSV · 自己写的笔记 · Spark 一句话生成全文。
 
 </td>
 </tr>
@@ -289,7 +289,7 @@ HTTPS 自己用 **Caddy / Traefik / Nginx** 反代,或者直接挂 Cloudflare Tu
 | `SILICONFLOW_API_KEY` | ❌ | 可选兜底 |
 | `MINIMAX_API_KEY` | ❌ | 可选兜底 |
 | `SERVICE_TOKENS` | ❌ | `tokenA:userA,tokenB:userB` — 给 bot 用 |
-| `LINKMIND_PUBLIC_BASE` | ❌ | bot 深链接所用的公网地址 |
+| `TROVE_PUBLIC_BASE` | ❌ | bot 深链接所用的公网地址 |
 
 完整模板见 `.env.example`。
 

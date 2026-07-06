@@ -3,8 +3,12 @@ import os
 import shutil
 import subprocess
 import time
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
+from urllib.parse import urlparse
 
+import httpx
 from fastapi import APIRouter, Depends
 
 from app.dependencies import require_superadmin
@@ -14,6 +18,56 @@ router = APIRouter(prefix="/api/system", tags=["system"])
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 FRONTEND_DIR = PROJECT_ROOT / "frontend"
+APP_NAME = "Trove AI"
+APP_VERSION = os.getenv("TROVE_VERSION", "1.3.0-dev")
+APP_REPO = os.getenv("TROVE_REPO_URL", "https://github.com/weaiw/trove-ai")
+APP_RELEASES_URL = f"{APP_REPO.rstrip('/')}/releases"
+
+
+def _github_latest_release_api(repo_url: str) -> Optional[str]:
+    parsed = urlparse(repo_url)
+    if parsed.netloc.lower() != "github.com":
+        return None
+    parts = [p for p in parsed.path.strip("/").split("/") if p]
+    if len(parts) < 2:
+        return None
+    owner, repo = parts[0], parts[1].removesuffix(".git")
+    return f"https://api.github.com/repos/{owner}/{repo}/releases/latest"
+
+
+def _git_commit() -> Optional[str]:
+    env_commit = os.getenv("TROVE_COMMIT") or os.getenv("GIT_COMMIT")
+    if env_commit:
+        return env_commit[:12]
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short=12", "HEAD"],
+            cwd=str(PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip() or None
+    except Exception:
+        pass
+    return None
+
+
+def _normalize_version(v: str) -> str:
+    return (v or "").strip().lstrip("v")
+
+
+def _version_tuple(v: str) -> tuple[int, ...]:
+    parts = []
+    for part in _normalize_version(v).split("."):
+        digits = "".join(ch for ch in part if ch.isdigit())
+        parts.append(int(digits or 0))
+    return tuple(parts or [0])
+
+
+def _is_newer(latest: str, current: str) -> bool:
+    return _version_tuple(latest) > _version_tuple(current)
 
 
 @router.get("/stats")
@@ -27,11 +81,94 @@ async def system_stats(
         total = sum(f.stat().st_size for f in next_dir.rglob("*") if f.is_file())
         cache_size_mb = round(total / (1024 * 1024), 2)
     return {
-        "app": "Trove AI",
-        "version": "1.2",
+        "app": APP_NAME,
+        "version": APP_VERSION,
         "cache_size_mb": cache_size_mb,
         "cache_exists": next_dir.exists(),
     }
+
+
+@router.get("/version")
+async def system_version():
+    """Public version metadata used by UI diagnostics."""
+    return {
+        "name": APP_NAME,
+        "version": APP_VERSION,
+        "commit": _git_commit(),
+        "repo": APP_REPO,
+        "releases_url": APP_RELEASES_URL,
+        "update_check_enabled": os.getenv("TROVE_UPDATE_CHECK", "true").lower() not in {"0", "false", "no"},
+    }
+
+
+@router.get("/update-check")
+async def update_check(
+    _super: User = Depends(require_superadmin),
+):
+    """Best-effort GitHub Releases update check for self-hosted deployments."""
+    enabled = os.getenv("TROVE_UPDATE_CHECK", "true").lower() not in {"0", "false", "no"}
+    checked_at = datetime.now(timezone.utc).isoformat()
+    if not enabled:
+        return {
+            "ok": False,
+            "disabled": True,
+            "current": APP_VERSION,
+            "latest": None,
+            "has_update": False,
+            "checked_at": checked_at,
+            "message": "更新检查已关闭",
+        }
+
+    latest_release_api = _github_latest_release_api(APP_REPO)
+    if not latest_release_api:
+        return {
+            "ok": False,
+            "current": APP_VERSION,
+            "latest": None,
+            "has_update": False,
+            "checked_at": checked_at,
+            "message": "当前仓库不是 GitHub Releases，无法自动检查更新",
+        }
+
+    try:
+        async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as client:
+            resp = await client.get(
+                latest_release_api,
+                headers={
+                    "Accept": "application/vnd.github+json",
+                    "User-Agent": "TroveAI-VersionCheck/1.0",
+                },
+            )
+        if resp.status_code >= 400:
+            return {
+                "ok": False,
+                "current": APP_VERSION,
+                "latest": None,
+                "has_update": False,
+                "checked_at": checked_at,
+                "message": f"GitHub 返回 {resp.status_code}",
+            }
+        data = resp.json()
+        latest = _normalize_version(data.get("tag_name") or data.get("name") or "")
+        return {
+            "ok": True,
+            "current": APP_VERSION,
+            "latest": latest or None,
+            "has_update": bool(latest and _is_newer(latest, APP_VERSION)),
+            "release_url": data.get("html_url") or APP_RELEASES_URL,
+            "published_at": data.get("published_at"),
+            "checked_at": checked_at,
+            "message": "检查完成",
+        }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "current": APP_VERSION,
+            "latest": None,
+            "has_update": False,
+            "checked_at": checked_at,
+            "message": f"无法检查更新: {type(exc).__name__}",
+        }
 
 
 @router.delete("/cache")

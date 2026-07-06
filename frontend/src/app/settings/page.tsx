@@ -4,10 +4,16 @@ import React, { useState, useEffect } from 'react';
 import {
   Trash2, RefreshCw, CheckCircle2, AlertCircle,
   Loader2, Zap, Cpu, Download, Upload, Settings2,
-  Eye, EyeOff, Activity, Server, HardDrive, Cog
+  Eye, EyeOff, Activity, Server, HardDrive, Cog,
+  Github, ExternalLink, GitBranch
 } from 'lucide-react';
 
 const API_BASE = '/api/system';
+
+function authHeaders(extra?: Record<string, string>): Record<string, string> {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('trove_token') : null;
+  return { ...(extra || {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+}
 
 interface ConfigField {
   key: string;
@@ -25,6 +31,27 @@ interface ConfigGroup {
   _values?: Record<string, string>;
 }
 
+interface VersionInfo {
+  name: string;
+  version: string;
+  commit?: string | null;
+  repo: string;
+  releases_url: string;
+  update_check_enabled: boolean;
+}
+
+interface UpdateInfo {
+  ok: boolean;
+  disabled?: boolean;
+  current: string;
+  latest?: string | null;
+  has_update: boolean;
+  release_url?: string;
+  published_at?: string;
+  checked_at?: string;
+  message: string;
+}
+
 export default function SettingsPage() {
   // Cache state
   const [cacheSize, setCacheSize] = useState<number | null>(null);
@@ -40,11 +67,14 @@ export default function SettingsPage() {
   const [testResult, setTestResult] = useState<{ok:boolean;message:string;latency_ms?:number}|null>(null);
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null);
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
 
 
   // Load cache stats
   useEffect(() => {
-    fetch(`${API_BASE}/stats`)
+    fetch(`${API_BASE}/stats`, { headers: authHeaders() })
       .then(r => r.json())
       .then(d => setCacheSize(d.cache_size_mb))
       .catch(() => {});
@@ -52,7 +82,7 @@ export default function SettingsPage() {
 
   // Load configs
   useEffect(() => {
-    fetch(`${API_BASE}/config`)
+    fetch(`${API_BASE}/config`, { headers: authHeaders() })
       .then(r => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
@@ -67,12 +97,19 @@ export default function SettingsPage() {
       .catch(e => setLoadError(e.message));
   }, []);
 
+  useEffect(() => {
+    fetch(`${API_BASE}/version`)
+      .then(r => r.json())
+      .then(d => setVersionInfo(d))
+      .catch(() => {});
+  }, []);
+
   // Cache actions
   const handleClearCache = async () => {
     setCacheLoading(true);
     setCacheMessage(null);
     try {
-      const r = await fetch(`${API_BASE}/cache`, { method: 'DELETE' });
+      const r = await fetch(`${API_BASE}/cache`, { method: 'DELETE', headers: authHeaders() });
       const d = await r.json();
       setCacheMessage({ text: d.message || '缓存已清除', ok: d.success });
       if (d.success) setCacheSize(0);
@@ -87,13 +124,32 @@ export default function SettingsPage() {
     setCacheLoading(true);
     setCacheMessage(null);
     try {
-      const r = await fetch(`${API_BASE}/rebuild`, { method: 'POST' });
+      const r = await fetch(`${API_BASE}/rebuild`, { method: 'POST', headers: authHeaders() });
       const d = await r.json();
       setCacheMessage({ text: d.message, ok: d.success });
     } catch {
       setCacheMessage({ text: '重建失败', ok: false });
     }
     setCacheLoading(false);
+  };
+
+  const handleUpdateCheck = async () => {
+    setCheckingUpdate(true);
+    setUpdateInfo(null);
+    try {
+      const r = await fetch(`${API_BASE}/update-check`, { headers: authHeaders() });
+      const d = await r.json();
+      setUpdateInfo(d);
+    } catch {
+      setUpdateInfo({
+        ok: false,
+        current: versionInfo?.version || 'unknown',
+        latest: null,
+        has_update: false,
+        message: '网络错误，无法检查更新',
+      });
+    }
+    setCheckingUpdate(false);
   };
 
   // Config actions
@@ -128,7 +184,7 @@ export default function SettingsPage() {
     try {
       const r = await fetch(`${API_BASE}/config/${groupName}/test`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(editValues),
       });
       const d = await r.json();
@@ -148,14 +204,14 @@ export default function SettingsPage() {
     try {
       const r = await fetch(`${API_BASE}/config/${groupName}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(editValues),
       });
       const d = await r.json();
       if (d.success) {
         setEditGroup(null);
         // Reload configs to get masked values
-        const r2 = await fetch(`${API_BASE}/config`);
+        const r2 = await fetch(`${API_BASE}/config`, { headers: authHeaders() });
         const d2 = await r2.json();
         if (d2.groups) setConfigs(d2.groups);
         setTestResult(null);
@@ -193,6 +249,103 @@ export default function SettingsPage() {
       <div>
         <h1 className="text-2xl font-bold text-[var(--foreground)]">系统管理</h1>
         <p className="text-sm text-[var(--text-secondary)] mt-1">管理缓存、API 配置与系统状态</p>
+      </div>
+
+      {/* === OSS / VERSION SECTION === */}
+      <div className="bg-[var(--bg-primary)] rounded-xl border border-[var(--border-color)] p-5">
+        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-4">
+          <div className="flex items-start gap-3 min-w-0">
+            <div className="w-9 h-9 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-color)] flex items-center justify-center shrink-0">
+              <Github size={18} className="text-[var(--foreground)]" />
+            </div>
+            <div>
+              <h2 className="font-semibold text-[var(--foreground)]">开源与版本</h2>
+              <p className="text-sm text-[var(--text-secondary)] mt-1">
+                Trove AI 是开源私有化知识管理 Agent；这里显示当前部署版本和公开仓维护入口。
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap md:flex-nowrap gap-2 md:shrink-0">
+            <a
+              href={versionInfo?.repo || 'https://github.com/weaiw/trove-ai'}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg border border-[var(--border-color)] hover:bg-[var(--bg-tertiary)] text-[var(--foreground)] whitespace-nowrap"
+            >
+              <Github size={14} />
+              GitHub
+              <ExternalLink size={12} className="text-[var(--text-tertiary)]" />
+            </a>
+            <a
+              href={versionInfo?.releases_url || 'https://github.com/weaiw/trove-ai/releases'}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg border border-[var(--border-color)] hover:bg-[var(--bg-tertiary)] text-[var(--foreground)] whitespace-nowrap"
+            >
+              <GitBranch size={14} />
+              Changelog
+              <ExternalLink size={12} className="text-[var(--text-tertiary)]" />
+            </a>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+          <div className="rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-color)] p-3">
+            <div className="text-xs text-[var(--text-tertiary)] mb-1">当前版本</div>
+            <div className="font-mono text-sm text-[var(--foreground)]">
+              v{versionInfo?.version || '—'}
+            </div>
+          </div>
+          <div className="rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-color)] p-3">
+            <div className="text-xs text-[var(--text-tertiary)] mb-1">Commit</div>
+            <div className="font-mono text-sm text-[var(--foreground)] truncate">
+              {versionInfo?.commit || '未内置'}
+            </div>
+          </div>
+          <div className="rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-color)] p-3">
+            <div className="text-xs text-[var(--text-tertiary)] mb-1">更新检查</div>
+            <div className="text-sm text-[var(--foreground)]">
+              {versionInfo?.update_check_enabled === false ? '已关闭' : '可用'}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={handleUpdateCheck}
+            disabled={checkingUpdate}
+            className="inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--accent)] text-white hover:opacity-90 disabled:opacity-50"
+          >
+            {checkingUpdate ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+            检查更新
+          </button>
+          {updateInfo && (
+            <div className={`text-xs px-3 py-2 rounded-lg border flex items-center gap-2 ${
+              updateInfo.has_update
+                ? 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800 text-yellow-800 dark:text-yellow-200'
+                : updateInfo.ok
+                  ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-800 dark:text-green-200'
+                  : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-800 dark:text-red-200'
+            }`}>
+              {updateInfo.has_update ? <AlertCircle size={14} /> : updateInfo.ok ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
+              <span>
+                {updateInfo.has_update
+                  ? `发现新版本 v${updateInfo.latest}`
+                  : updateInfo.message}
+              </span>
+              {updateInfo.release_url && (
+                <a
+                  href={updateInfo.release_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline underline-offset-2"
+                >
+                  查看
+                </a>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* === CACHE SECTION === */}
@@ -387,7 +540,7 @@ export default function SettingsPage() {
       )}
 
       <div className="text-center text-xs text-[var(--text-tertiary)] py-4">
-        Trove AI v1.2
+        Trove AI v{versionInfo?.version || '1.3.0-dev'}
       </div>
     </div>
   );

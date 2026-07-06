@@ -2,7 +2,7 @@
 
 # Trove AI — 拾遗
 
-**Read-later + AI knowledge base, built for the Chinese internet.**
+**An open-source, self-hostable knowledge-management Agent built for the Chinese internet.**
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 [![Backend: FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688)](https://fastapi.tiangolo.com)
@@ -21,11 +21,11 @@
 
 You save 1000 articles. You re-read 5.
 
-The problem isn't that you have too much — it's that your tools treat "save" and "read" as the same action. WeChat 收藏 buries them. **收藏 ≠ reading.** That gap is the entire problem.
+The problem is not that you save too much. It is that most tools stop at "saved", while real knowledge work starts at "read, connected, compared, and reused." WeChat 收藏 buries materials. Classic read-later tools mostly queue links. **Saving is not knowledge management.**
 
-**Pocket shut down in 2024. Omnivore shut down too.** Their users' carefully curated libraries vanished overnight.
+The exits and changes around tools like Pocket and Omnivore are also a reminder: your personal knowledge base should not depend entirely on somebody else's server.
 
-**Trove AI is a self-hostable, AI-powered second brain** that turns "save for later" back into "actually read & remember." Built first-class for the Chinese internet (WeChat 公众号 / 知乎 / 抖音 / 小红书 / B 站 / 头条 / 掘金 / CSDN), with WeChat Bot ingress, automatic knowledge graph, and one-way Obsidian sync as built-in features.
+**Trove AI is a self-hostable knowledge-management Agent.** The web AI assistant and WeChat Bot are both entry points into the same private library: ask questions, review recent saves, find source material, compare viewpoints, generate learning paths, and keep the results under your control. It is built first-class for the Chinese internet (WeChat 公众号 / 知乎 / 抖音 / 小红书 / B 站 / 头条 / 掘金 / CSDN), with automatic knowledge graph, concept pages, MCP access, and Obsidian sync built in.
 
 It's yours to host. It's yours to keep.
 
@@ -45,8 +45,8 @@ Ingestion via: browser bookmark, WeChat Bot, paste, upload (PDF/DOCX/EPUB/etc), 
 </td>
 <td width="50%" valign="top">
 
-#### 🧠 AI does the work, not you
-Every article gets: AI-extracted title, 5-sentence summary, 3-5 key points, auto-tags, source-aware author extraction, 1024-dim vector embedding, mind-map auto-generation, video transcription.
+#### 🧠 Knowledge-management Agent
+The web AI assistant and WeChat Bot use your private library to answer questions, review recent saves, find source material, compare viewpoints, and cite the articles they used.
 
 </td>
 </tr>
@@ -74,7 +74,7 @@ One sentence → AI picks articles from your library, orders them, presents as a
 <td width="50%" valign="top">
 
 #### 💬 WeChat Bot ingress
-Forward an article URL to your bot → it's in your library 5 seconds later, with summary, tags, and "related to your earlier reads" suggestions.
+Forward an article URL, file, image, or voice message to your bot → it is saved to the library or turned into an Agent query. Mobile capture and mobile thinking go into the same knowledge base.
 
 </td>
 </tr>
@@ -102,7 +102,7 @@ Folder hierarchy · tag system · archive · favorite · recycle bin · weekly r
 <td width="50%" valign="top">
 
 #### 🌐 All content types
-Web links · clipboard paste · PDF · Word · Excel · PPT · EPUB · CSV · plain notes · Spark (1-sentence → full article AI generation).
+Web links · clipboard paste · PDF · Word · Excel · PPT · images · EPUB · CSV · plain notes · Spark (1-sentence → full article AI generation).
 
 </td>
 </tr>
@@ -290,7 +290,7 @@ Everything user-facing is configurable via the web UI:
 | `SILICONFLOW_API_KEY` | ❌ | Optional fallback |
 | `MINIMAX_API_KEY` | ❌ | Optional fallback |
 | `SERVICE_TOKENS` | ❌ | `tokenA:userA,tokenB:userB` — for bots |
-| `LINKMIND_PUBLIC_BASE` | ❌ | Public URL for bot deep links |
+| `TROVE_PUBLIC_BASE` | ❌ | Public URL for bot deep links |
 
 See `.env.example` for the complete template with comments.
 

@@ -5,7 +5,14 @@ All notable changes to Trove AI are documented here. This project adheres to [Se
 ## [Unreleased]
 
 ### Added
+- **Knowledge-management Agent positioning** — README copy now frames Trove AI as an open-source, self-hostable knowledge-management Agent instead of only a read-later tool. The web AI assistant and WeChat Bot are documented as Agent entry points over the same private library.
+- **WeChat Bot media input** — the bot can now receive files, images, and voice messages. Files/images are downloaded from iLink media, decrypted, and uploaded through the existing `/api/articles/upload` pipeline; voice messages use `voice_item.text` when available and fall back to the transcription service before routing the text into the Agent. Outbound TTS/voice bubbles are intentionally not included.
+- **Open-source maintenance signals** — system settings now show the GitHub repository, release/changelog link, current version, commit, and a best-effort GitHub Releases update check (`GET /api/system/version`, `GET /api/system/update-check`). The sidebar also links to the public repository.
+- **Broader upload formats** — file upload now accepts `.webp`, `.gif`, and `.htm`, matching the WeChat Bot media ingestion path.
 - **MCP write tools (opt-in)** — the MCP server can now create/modify content, gated behind a per-user "allow write" switch (default **off**). When enabled it additionally exposes `add_article`, `add_note`, `update_article`, `set_article_tags`; read tools stay always-on. New `PUT /api/auth/mcp-write` toggle + a switch and live tool list in the settings "外部 AI 接入 (MCP)" card. Migration `012` (`users.mcp_write_enabled`).
+
+### Changed
+- The open-source WeChat Bot default question flow now routes to the existing read-only tool Agent at `/api/research/agent`, avoiding internal-only `/api/agent/chat` and `/api/agent/execute` dependencies. Write-operation confirmation remains a future unified Agent endpoint rather than a hidden open-source promise.
 
 ## [1.2.0] — 2026-06-22
 
