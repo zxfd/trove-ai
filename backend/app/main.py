@@ -1,4 +1,4 @@
-"""Trove AI — read-later + AI knowledge base for the Chinese internet"""
+"""Trove AI — self-hosted knowledge-management Agent."""
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -10,7 +10,7 @@ import httpx
 
 from app.config import get_settings
 from app.database import init_db
-from .routers import articles, knowledge, learning, system, assistant, auth, users, wechat, review, research, sync, mcp, concepts
+from .routers import articles, knowledge, learning, system, assistant, auth, users, wechat, review, research, sync, mcp, concepts, agent_chat, lark
 
 settings = get_settings()
 logger = logging.getLogger("trove.auto_backfill")
@@ -79,6 +79,13 @@ async def lifespan(app: FastAPI):
     logger.info("Review cron loop started (60s tick)")
 
     print(f"🚀 Trove AI started successfully")
+    try:
+        from app.services.proxy_service import apply_proxy_config
+        result = await apply_proxy_config()
+        if not result.get("ok"):
+            logger.warning("Proxy startup apply skipped: %s", result.get("error"))
+    except Exception as exc:
+        logger.warning("Proxy startup apply failed: %s", exc)
     yield
     # Shutdown
     backfill_task.cancel()
@@ -88,7 +95,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Trove AI",
-    description="Trove AI — read-later + AI knowledge base for the Chinese internet",
+    description="Trove AI — self-hosted knowledge-management Agent",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -150,6 +157,12 @@ app.include_router(mcp.router)
 
 # Concept synthesis pages
 app.include_router(concepts.router)
+
+# Unified knowledge-management Agent with memory and confirmed write tools
+app.include_router(agent_chat.router)
+
+# Feishu webhook channel and per-user binding
+app.include_router(lark.router)
 
 # Allowed image proxy domains (anti-SSRF protection)
 ALLOWED_IMAGE_DOMAINS = {

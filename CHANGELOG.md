@@ -4,6 +4,24 @@ All notable changes to Trove AI are documented here. This project adheres to [Se
 
 ## [Unreleased]
 
+## [1.4.0] — 2026-08-23
+
+### Added
+- **Unified knowledge-management Agent** — the open-source web assistant now uses the same session memory, long-term user memory, implicit intent routing, streaming Markdown, and follow-up context as the maintained deployment.
+- **Confirmed write tools** — the Agent can tag articles, move articles into folders, create graph relationships, synthesize concept pages, and configure periodic review. Every data-changing tool pauses at a confirmation gate and executes only after the user confirms; all reads and writes are scoped to the authenticated user.
+- **Feishu Bot channel** — a self-built Feishu app can receive text, links, files, images, and voice input through `im.message.receive_v1`. Users bind their Feishu identity with a short-lived six-digit code from Personal Settings; private chats are supported and group chats respond only when mentioned.
+- **Clash/Mihomo subscription proxy** — Docker Compose now includes an internal Mihomo sidecar. Administrators can paste a subscription URL in System Management, test it, and choose direct or proxy collection per platform. The backend generates a restricted config, masks the subscription URL, and hot-reloads Mihomo without exposing its controller publicly.
+- **Vision and web-search settings** — system management includes OpenAI-compatible vision and Tavily search configuration, used by image ingestion and the Agent's external research tools.
+
+### Changed
+- Collection routing is now `direct / proxy`; the open-source build contains no local/VPS acquisition-task mechanism.
+- The web, WeChat, and Feishu entry points share the same Agent contract. Voice is input-only; outbound TTS remains intentionally excluded.
+- Sensitive system configuration, cache, rebuild, and update-check endpoints now require an explicit super-admin credential instead of accepting the anonymous default-user fallback.
+
+### Migrations
+- `013_agent_memory.sql`: Agent sessions, messages, and long-term user memory.
+- `014_channel_bindings.sql`: channel identity bindings, one-time codes, and webhook event deduplication.
+
 ## [1.3.0] — 2026-07-06
 
 ### Added
@@ -14,7 +32,7 @@ All notable changes to Trove AI are documented here. This project adheres to [Se
 - **MCP write tools (opt-in)** — the MCP server can now create/modify content, gated behind a per-user "allow write" switch (default **off**). When enabled it additionally exposes `add_article`, `add_note`, `update_article`, `set_article_tags`; read tools stay always-on. New `PUT /api/auth/mcp-write` toggle + a switch and live tool list in the settings "外部 AI 接入 (MCP)" card. Migration `012` (`users.mcp_write_enabled`).
 
 ### Changed
-- The open-source WeChat Bot default question flow now routes to the existing read-only tool Agent at `/api/research/agent`, avoiding internal-only `/api/agent/chat` and `/api/agent/execute` dependencies. Write-operation confirmation remains a future unified Agent endpoint rather than a hidden open-source promise.
+- The open-source WeChat Bot default question flow routes to the available tool Agent; the unified memory and confirmed-write endpoint is included from v1.4.0 onward.
 
 ## [1.2.0] — 2026-06-22
 

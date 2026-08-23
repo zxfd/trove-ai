@@ -25,7 +25,7 @@ The problem is not that you save too much. It is that most tools stop at "saved"
 
 The exits and changes around tools like Pocket and Omnivore are also a reminder: your personal knowledge base should not depend entirely on somebody else's server.
 
-**Trove AI is a self-hostable knowledge-management Agent.** The web AI assistant and WeChat Bot are both entry points into the same private library: ask questions, review recent saves, find source material, compare viewpoints, generate learning paths, and keep the results under your control. It is built first-class for the Chinese internet (WeChat 公众号 / 知乎 / 抖音 / 小红书 / B 站 / 头条 / 掘金 / CSDN), with automatic knowledge graph, concept pages, MCP access, and Obsidian sync built in.
+**Trove AI is a self-hostable knowledge-management Agent.** The web assistant, WeChat Bot, and Feishu Bot share the same private library and memory. The Agent can research and compare sources, then tag, organize, link, and synthesize knowledge after explicit confirmation. It is built first-class for the Chinese internet (WeChat 公众号 / 知乎 / 抖音 / 小红书 / B 站 / 头条 / 掘金 / CSDN), with automatic knowledge graph, concept pages, MCP access, Obsidian sync, and optional Clash/Mihomo subscription proxying built in.
 
 It's yours to host. It's yours to keep.
 
@@ -157,6 +157,8 @@ Auto-switching based on OS preference, or pin to your favorite mode. Eye-friendl
 | Knowledge graph | ✅ Auto | ❌ | ❌ | ❌ | ❌ | ❌ |
 | Learning paths | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | WeChat Bot | ✅ Built-in | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Feishu Bot | ✅ Built-in | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Confirmed Agent writes | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | Obsidian sync | ✅ Plugin | ❌ | ✅ | ✅ Paid | ❌ | ❌ |
 | **Responsive (PC/pad/mobile)** | ✅ All native | ✅ | Limited | ✅ | Limited | Limited |
 | Multi-tenant | ✅ | N/A | ✅ | N/A | Limited | Limited |
@@ -224,7 +226,7 @@ Bring your own reverse proxy (**Caddy / Traefik / Nginx**) for HTTPS, or use Clo
 ```
         ┌──────────────────────────────────────────────────────┐
         │       Any device — PC · iPad · mobile · browser       │
-        │   • Web app   • WeChat Bot   • Obsidian plugin        │
+        │   • Web app   • WeChat / Feishu Bots   • Obsidian     │
         └─────────────────────────┬────────────────────────────┘
                                   │
                           ┌───────▼───────┐

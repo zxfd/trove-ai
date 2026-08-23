@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 import httpx
 from fastapi import APIRouter, Depends
 
-from app.dependencies import require_superadmin
+from app.dependencies import require_superadmin_strict
 from app.models.user import User
 
 router = APIRouter(prefix="/api/system", tags=["system"])
@@ -19,7 +19,7 @@ router = APIRouter(prefix="/api/system", tags=["system"])
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 FRONTEND_DIR = PROJECT_ROOT / "frontend"
 APP_NAME = "Trove AI"
-APP_VERSION = os.getenv("TROVE_VERSION", "1.3.0")
+APP_VERSION = os.getenv("TROVE_VERSION", "1.4.0")
 APP_REPO = os.getenv("TROVE_REPO_URL", "https://github.com/weaiw/trove-ai")
 APP_RELEASES_URL = f"{APP_REPO.rstrip('/')}/releases"
 
@@ -72,7 +72,7 @@ def _is_newer(latest: str, current: str) -> bool:
 
 @router.get("/stats")
 async def system_stats(
-    _super: User = Depends(require_superadmin),
+    _super: User = Depends(require_superadmin_strict),
 ):
     """Get system statistics."""
     next_dir = FRONTEND_DIR / ".next"
@@ -103,7 +103,7 @@ async def system_version():
 
 @router.get("/update-check")
 async def update_check(
-    _super: User = Depends(require_superadmin),
+    _super: User = Depends(require_superadmin_strict),
 ):
     """Best-effort GitHub Releases update check for self-hosted deployments."""
     enabled = os.getenv("TROVE_UPDATE_CHECK", "true").lower() not in {"0", "false", "no"}
@@ -172,7 +172,7 @@ async def update_check(
 
 
 @router.delete("/cache")
-async def clear_cache():
+async def clear_cache(_super: User = Depends(require_superadmin_strict)):
     """Clear frontend .next build cache and restart frontend container."""
     result = {"action": "clear_cache", "steps": []}
     next_dir = FRONTEND_DIR / ".next"
@@ -195,7 +195,7 @@ async def clear_cache():
 
 
 @router.post("/rebuild")
-async def rebuild_frontend():
+async def rebuild_frontend(_super: User = Depends(require_superadmin_strict)):
     """Rebuild frontend Docker image from scratch and restart."""
     try:
         subprocess.run(
@@ -217,12 +217,14 @@ async def rebuild_frontend():
 
 from app.config_manager import (
     CONFIG_SCHEMA, get_effective_config, save_config, get_masked_config,
-    test_llm_connection, test_embedding_connection,
+    test_llm_connection, test_embedding_connection, test_vision_connection, test_search_connection,
 )
+from app.services.lark_service import test_lark_connection
+from app.services.proxy_service import apply_proxy_config, test_proxy_connection
 
 
 @router.get("/config")
-async def get_all_configs():
+async def get_all_configs(_super: User = Depends(require_superadmin_strict)):
     """Get all configuration groups with masked values."""
     groups = []
     for group_name, schema in CONFIG_SCHEMA.items():
@@ -273,7 +275,7 @@ def _merge_with_saved(group_name: str, body: dict) -> dict:
 
 
 @router.post("/config/{group_name}/test")
-async def test_config(group_name: str, body: dict):
+async def test_config(group_name: str, body: dict, _super: User = Depends(require_superadmin_strict)):
     """Test connectivity for a config group without saving."""
     body = _merge_with_saved(group_name, body or {})
     t0 = time.time()
@@ -282,6 +284,16 @@ async def test_config(group_name: str, body: dict):
             result = await test_llm_connection(body)
         elif group_name == "embedding":
             result = await test_embedding_connection(body)
+        elif group_name == "vision":
+            result = await test_vision_connection(body)
+        elif group_name == "search":
+            result = await test_search_connection(body)
+        elif group_name == "proxy":
+            result = await test_proxy_connection(body)
+        elif group_name == "lark":
+            result = await test_lark_connection(body)
+        elif group_name in CONFIG_SCHEMA and CONFIG_SCHEMA[group_name].get("test_provider") is None:
+            result = {"ok": True, "message": "该配置无需连接测试"}
         else:
             return {"success": False, "message": f"未知配置组: {group_name}"}
         latency_ms = round((time.time() - t0) * 1000)
@@ -296,7 +308,7 @@ async def test_config(group_name: str, body: dict):
 
 
 @router.put("/config/{group_name}")
-async def update_config(group_name: str, body: dict):
+async def update_config(group_name: str, body: dict, _super: User = Depends(require_superadmin_strict)):
     """Update config — tests connectivity first, saves only on success."""
     body = _merge_with_saved(group_name, body or {})
     t0 = time.time()
@@ -307,6 +319,16 @@ async def update_config(group_name: str, body: dict):
             test_result = await test_llm_connection(body)
         elif group_name == "embedding":
             test_result = await test_embedding_connection(body)
+        elif group_name == "vision":
+            test_result = await test_vision_connection(body)
+        elif group_name == "search":
+            test_result = await test_search_connection(body)
+        elif group_name == "proxy":
+            test_result = await test_proxy_connection(body)
+        elif group_name == "lark":
+            test_result = await test_lark_connection(body)
+        elif group_name in CONFIG_SCHEMA and CONFIG_SCHEMA[group_name].get("test_provider") is None:
+            test_result = {"ok": True, "message": "该配置无需连接测试"}
         else:
             return {"success": False, "message": f"未知配置组: {group_name}"}
     except Exception as e:
@@ -317,6 +339,11 @@ async def update_config(group_name: str, body: dict):
             "success": False,
             "message": f"连通性测试失败: {test_result.get('error') or test_result.get('message', '未知错误')}，配置未保存",
         }
+
+    if group_name == "proxy" and str(body.get("enabled", "false")).lower() == "true":
+        apply_result = await apply_proxy_config(body)
+        if not apply_result.get("ok"):
+            return {"success": False, "message": f"{apply_result.get('error', 'Mihomo 配置应用失败')}，配置未保存"}
 
     latency_ms = round((time.time() - t0) * 1000)
 

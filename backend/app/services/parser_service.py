@@ -51,6 +51,11 @@ class ParserService:
         'iesdouyin.com': 'douyin',     # 抖音分享口令短链域
         'xiaohongshu.com': 'xhs',      # 小红书
         'xhslink.com': 'xhs',          # 小红书短链
+        'x.com': 'x',
+        'twitter.com': 'x',
+        'youtube.com': 'youtube',
+        'youtu.be': 'youtube',
+        'github.com': 'github',
     }
     
     def detect_platform(self, url: str) -> str:
@@ -172,7 +177,7 @@ class ParserService:
             logger.warning(f"trafilatura extract failed for {url}: {e}")
             return None
 
-    async def _render_with_playwright(self, url: str) -> Optional[str]:
+    async def _render_with_playwright(self, url: str, platform: Optional[str] = None) -> Optional[str]:
         """复用现成 headless Chromium 渲染 JS 动态页,返回完整 HTML。失败返回 None。"""
         try:
             from playwright.async_api import async_playwright
@@ -183,6 +188,7 @@ class ParserService:
             async with async_playwright() as p:
                 browser = await p.chromium.launch(
                     headless=True,
+                    proxy=self._playwright_proxy(platform),
                     args=['--no-sandbox', '--disable-blink-features=AutomationControlled'],
                 )
                 ctx = await browser.new_context(
@@ -244,7 +250,8 @@ class ParserService:
     async def _fetch_generic(self, url: str, platform: str) -> Dict:
         """通用网页抓取 + 提取级联。"""
         headers = self._get_headers(platform, url)
-        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+        proxy = self._configured_proxy(platform)
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True, proxy=proxy) as client:
             resp = await client.get(url, headers=headers)
             resp.raise_for_status()
             html = resp.text
@@ -253,13 +260,23 @@ class ParserService:
 
         # 内容过短 → 大概率是 JS 动态渲染页(视频号/部分前端框架站),Playwright 渲染后重试,取更长者
         if self._text_len(result['raw_content']) < self._MIN_CONTENT_CHARS:
-            rendered = await self._render_with_playwright(url)
+            rendered = await self._render_with_playwright(url, platform)
             if rendered:
                 alt = self._build_generic_result(rendered, url, platform)
                 if self._text_len(alt['raw_content']) > self._text_len(result['raw_content']):
                     logger.info(f"generic fetch: playwright render improved content for {url}")
                     result = alt
         return result
+
+    @staticmethod
+    def _configured_proxy(platform: Optional[str] = None) -> Optional[str]:
+        from app.services.proxy_service import platform_proxy_url
+        return platform_proxy_url(platform)
+
+    @staticmethod
+    def _playwright_proxy(platform: Optional[str] = None) -> Optional[dict]:
+        from app.services.proxy_service import playwright_proxy
+        return playwright_proxy(platform)
 
     # ── 通用提取辅助(供 _build_generic_result 兜底使用) ──────────────
     def _extract_content(self, soup: BeautifulSoup, platform: str, og_meta: Dict) -> str:
@@ -690,6 +707,7 @@ class ParserService:
         async with async_playwright() as p:
             browser = await p.chromium.launch(
                 headless=True,
+                proxy=self._playwright_proxy('douyin'),
                 args=[
                     '--disable-blink-features=AutomationControlled',
                     '--disable-dev-shm-usage',
@@ -1131,6 +1149,7 @@ class ParserService:
 
         html = ""
         final_url = url
+        proxy = self._configured_proxy('xhs')
         try:
             from curl_cffi import requests as curl_requests
             resp = curl_requests.get(
@@ -1144,6 +1163,7 @@ class ParserService:
                 impersonate='chrome124',
                 timeout=20,
                 allow_redirects=True,
+                proxies={"http": proxy, "https": proxy} if proxy else None,
             )
             html = resp.text or ""
             final_url = str(resp.url) if hasattr(resp, 'url') else url
@@ -1162,7 +1182,7 @@ class ParserService:
 
         # Fallback to Playwright if state parsing failed
         if note is None:
-            note, html_pw, final_url_pw = await _xhs_playwright_fetch(url, desktop_ua)
+            note, html_pw, final_url_pw = await _xhs_playwright_fetch(url, desktop_ua, self._playwright_proxy('xhs'))
             if html_pw:
                 html = html_pw
             if final_url_pw:
@@ -1459,7 +1479,7 @@ def _extract_xhs_video_url(note: dict) -> Optional[str]:
     return None
 
 
-async def _xhs_playwright_fetch(url: str, ua: str):
+async def _xhs_playwright_fetch(url: str, ua: str, proxy: Optional[dict] = None):
     """Playwright fallback for XHS: renders the page with desktop UA, captures HTML.
 
     XHS reliably rejects iPhone-mobile UAs (sec_server redirect); desktop Chrome
@@ -1479,6 +1499,7 @@ async def _xhs_playwright_fetch(url: str, ua: str):
         async with async_playwright() as p:
             browser = await p.chromium.launch(
                 headless=True,
+                proxy=proxy,
                 args=['--no-sandbox', '--disable-blink-features=AutomationControlled'],
             )
             ctx = await browser.new_context(

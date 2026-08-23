@@ -2,6 +2,7 @@
 
 import React from 'react';
 import WechatBinding from '@/components/WechatBinding';
+import LarkBinding from '@/components/LarkBinding';
 import ReviewSettings from '@/components/ReviewSettings';
 import ObsidianBackup from '@/components/ObsidianBackup';
 import KbPurpose from '@/components/KbPurpose';
@@ -17,6 +18,7 @@ export default function MyPage() {
 
       <KbPurpose />
       <WechatBinding />
+      <LarkBinding />
       <ReviewSettings />
       <ObsidianBackup />
       <McpAccess />

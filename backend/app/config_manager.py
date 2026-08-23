@@ -124,6 +124,72 @@ CONFIG_SCHEMA: Dict[str, dict] = {
         ],
         "test_provider": "embedding",
     },
+    "vision": {
+        "label": "图片识别模型",
+        "description": "用于识别上传图片内容，支持 OpenAI 兼容的 Vision API",
+        "icon": "image",
+        "fields": [
+            {"key": "api_key", "label": "API Key", "type": "password", "default": "", "required": True, "secret": True},
+            {"key": "api_base", "label": "API 地址", "type": "url", "default": "https://api.siliconflow.cn/v1", "required": True},
+            {"key": "model", "label": "模型名称", "type": "text", "default": "Qwen/Qwen2.5-VL-7B-Instruct", "required": True},
+        ],
+        "test_provider": "vision",
+    },
+    "search": {
+        "label": "联网搜索 (Tavily)",
+        "description": "用于 Agent 联网搜索和库内外对比。",
+        "icon": "globe",
+        "fields": [
+            {"key": "api_key", "label": "API Key", "type": "password", "default": "", "placeholder": "tvly-...", "required": True, "secret": True},
+            {"key": "api_base", "label": "API 地址", "type": "url", "default": "https://api.tavily.com", "required": True},
+        ],
+        "test_provider": "search",
+    },
+    "proxy": {
+        "label": "订阅代理",
+        "description": "把 Clash/Mihomo 订阅转换为统一采集出口。订阅地址仅由后端保存并以密钥形式遮罩。",
+        "icon": "shield",
+        "fields": [
+            {"key": "enabled", "label": "代理状态", "type": "select", "options": [
+                {"value": "false", "label": "关闭"}, {"value": "true", "label": "启用"}
+            ], "default": "false", "required": True},
+            {"key": "subscription_url", "label": "Clash 订阅地址", "type": "password", "default": "", "placeholder": "https://example.com/clash/subscription", "required": False, "secret": True},
+            {"key": "proxy_url", "label": "应用代理地址", "type": "url", "default": "http://mihomo:7890", "placeholder": "http://mihomo:7890", "required": True},
+            {"key": "controller_url", "label": "Mihomo 控制地址", "type": "url", "default": "http://mihomo:9090", "placeholder": "http://mihomo:9090", "required": True},
+        ],
+        "test_provider": "proxy",
+    },
+    "lark": {
+        "label": "飞书 Bot",
+        "description": "飞书自建应用的事件订阅与消息能力。用户绑定在个人设置中完成。",
+        "icon": "message-square",
+        "fields": [
+            {"key": "enabled", "label": "Bot 状态", "type": "select", "options": [
+                {"value": "false", "label": "关闭"}, {"value": "true", "label": "启用"}
+            ], "default": "false", "required": True},
+            {"key": "app_id", "label": "App ID", "type": "text", "default": "", "required": False},
+            {"key": "app_secret", "label": "App Secret", "type": "password", "default": "", "required": False, "secret": True},
+            {"key": "verification_token", "label": "Verification Token", "type": "password", "default": "", "required": False, "secret": True},
+        ],
+        "test_provider": "lark",
+    },
+    "fetch_routing": {
+        "label": "采集路由",
+        "description": "选择平台由服务器直连，还是经订阅代理采集。",
+        "icon": "share-2",
+        "fields": [
+            {"key": "douyin", "label": "抖音", "type": "select", "options": [
+                {"value": "direct", "label": "服务器直连"}, {"value": "proxy", "label": "订阅代理"}
+            ], "default": "direct", "required": False},
+            {"key": "xhs", "label": "小红书", "type": "select", "options": [
+                {"value": "direct", "label": "服务器直连"}, {"value": "proxy", "label": "订阅代理"}
+            ], "default": "direct", "required": False},
+            {"key": "shipinhao", "label": "视频号", "type": "select", "options": [
+                {"value": "direct", "label": "服务器直连"}, {"value": "proxy", "label": "订阅代理"}
+            ], "default": "direct", "required": False},
+        ],
+        "test_provider": None,
+    },
 }
 
 
@@ -229,6 +295,10 @@ def get_llm_config() -> Dict[str, str]:
 def get_embedding_config() -> Dict[str, str]:
     """Get effective embedding config."""
     return get_effective_config("embedding")
+
+
+def get_vision_config() -> Dict[str, str]:
+    return get_effective_config("vision")
 
 
 def get_all_schemas() -> Dict[str, dict]:
@@ -418,3 +488,39 @@ async def test_embedding_connection(config: Optional[Dict[str, Any]] = None) -> 
                 return {"ok": False, "error": f"请求失败 ({resp.status_code})", "latency_ms": latency}
     except Exception as e:
         return {"ok": False, "error": f"连接异常: {str(e)}", "latency_ms": 0}
+
+
+async def test_vision_connection(config: Optional[Dict[str, Any]] = None) -> dict:
+    config = config or get_effective_config("vision")
+    api_key = config.get("api_key", "")
+    if not api_key:
+        return {"ok": False, "error": "API Key 未配置"}
+    url = config.get("api_base", "").rstrip("/") + "/chat/completions"
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            response = await client.post(url, headers={"Authorization": f"Bearer {api_key}"}, json={
+                "model": config.get("model"), "messages": [{"role": "user", "content": "Hi"}], "max_tokens": 5,
+            })
+        if response.status_code == 200:
+            return {"ok": True, "message": "连接成功"}
+        return {"ok": False, "error": f"请求失败 ({response.status_code})"}
+    except Exception as exc:
+        return {"ok": False, "error": f"连接异常: {type(exc).__name__}"}
+
+
+async def test_search_connection(config: Optional[Dict[str, Any]] = None) -> dict:
+    config = config or get_effective_config("search")
+    api_key = config.get("api_key", "")
+    if not api_key:
+        return {"ok": False, "error": "Tavily API Key 未配置"}
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            response = await client.post(
+                config.get("api_base", "https://api.tavily.com").rstrip("/") + "/search",
+                json={"api_key": api_key, "query": "Trove AI", "max_results": 1},
+            )
+        if response.status_code == 200:
+            return {"ok": True, "message": "联网搜索可用"}
+        return {"ok": False, "error": f"请求失败 ({response.status_code})"}
+    except Exception as exc:
+        return {"ok": False, "error": f"连接异常: {type(exc).__name__}"}

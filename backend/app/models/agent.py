@@ -53,3 +53,67 @@ class WechatAccount(Base):
     sync_cursor = Column(Text)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     unbound_at = Column(DateTime(timezone=True))
+
+
+class AgentSession(Base):
+    __tablename__ = 'agent_sessions'
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), nullable=False)
+    title = Column(String(200))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class AgentMessage(Base):
+    __tablename__ = 'agent_messages'
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    session_id = Column(UUID(as_uuid=True), ForeignKey('agent_sessions.id', ondelete='CASCADE'), nullable=False)
+    role = Column(String(20), nullable=False)
+    content = Column(Text)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class UserMemory(Base):
+    __tablename__ = 'user_memory'
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), nullable=False)
+    kind = Column(String(20), nullable=False, default='fact')
+    content = Column(Text, nullable=False)
+    source = Column(String(40), default='agent')
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class ChannelBinding(Base):
+    __tablename__ = 'channel_bindings'
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    channel = Column(String(30), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    external_user_id = Column(String(200), nullable=False)
+    external_tenant_id = Column(String(200))
+    display_name = Column(String(200))
+    agent_session_id = Column(String(100))
+    pending_action = Column(Text)
+    is_active = Column(Boolean, default=True)
+    last_seen_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    unbound_at = Column(DateTime(timezone=True))
+
+
+class ChannelBindCode(Base):
+    __tablename__ = 'channel_bind_codes'
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    channel = Column(String(30), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    code_hash = Column(String(64), nullable=False, unique=True)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    used_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class ChannelEvent(Base):
+    __tablename__ = 'channel_events'
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    channel = Column(String(30), nullable=False)
+    event_id = Column(String(200), nullable=False, unique=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
