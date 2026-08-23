@@ -201,6 +201,20 @@ async def require_superadmin(
     return current_user
 
 
+async def require_superadmin_strict(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
+    x_act_as_user: Optional[str] = Header(default=None, alias="X-Act-As-User"),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    """Require a real administrator credential; never use anonymous fallback."""
+    if not credentials:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="需要登录（管理员）")
+    user = await get_current_user(credentials=credentials, x_act_as_user=x_act_as_user, db=db)
+    if not user.is_super_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="仅超级管理员可执行此操作")
+    return user
+
+
 # ── Optional user (for public endpoints that optionally need user context) ──
 async def get_optional_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),

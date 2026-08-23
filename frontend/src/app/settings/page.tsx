@@ -4,12 +4,13 @@ import React, { useState, useEffect } from 'react';
 import {
   Trash2, RefreshCw, CheckCircle2, AlertCircle,
   Loader2, Zap, Cpu, Download, Upload, Settings2,
-  Eye, EyeOff, Activity, Server, HardDrive, Cog,
-  Github, ExternalLink, GitBranch
+  Eye, EyeOff, Activity, Server, HardDrive, Cog, Globe,
+  Github, ExternalLink, GitBranch, Shield, MessageSquare, Route
 } from 'lucide-react';
 
 const API_BASE = '/api/system';
 
+// 系统配置接口现要求超管 token（后端 require_superadmin_strict），所有请求都带上登录态
 function authHeaders(extra?: Record<string, string>): Record<string, string> {
   const token = typeof window !== 'undefined' ? localStorage.getItem('trove_token') : null;
   return { ...(extra || {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) };
@@ -18,7 +19,7 @@ function authHeaders(extra?: Record<string, string>): Record<string, string> {
 interface ConfigField {
   key: string;
   label: string;
-  type: 'string' | 'password' | 'select' | 'number';
+  type: 'string' | 'text' | 'url' | 'password' | 'select' | 'number';
   required: boolean;
   placeholder?: string;
   options?: { label: string; value: string }[];
@@ -232,16 +233,28 @@ export default function SettingsPage() {
   const groupIcons: Record<string, React.ReactNode> = {
     llm: <Zap className="w-5 h-5 text-amber-500" />,
     embedding: <Cpu className="w-5 h-5 text-blue-500" />,
+    search: <Globe className="w-5 h-5 text-emerald-500" />,
+    proxy: <Shield className="w-5 h-5 text-cyan-600" />,
+    lark: <MessageSquare className="w-5 h-5 text-blue-600" />,
+    fetch_routing: <Route className="w-5 h-5 text-orange-500" />,
   };
 
   const groupLabels: Record<string, string> = {
     llm: 'AI 对话模型',
     embedding: '嵌入模型',
+    search: '联网搜索 (Tavily)',
+    proxy: '订阅代理',
+    lark: '飞书 Bot',
+    fetch_routing: '采集路由',
   };
 
   const groupDescs: Record<string, string> = {
     llm: '用于文章摘要、灵感创作、标签生成等 AI 功能',
     embedding: '用于语义搜索和知识图谱的向量化',
+    search: '用于 AI 助手联网搜索、做「库内 vs 库外」对比',
+    proxy: '导入 Clash/Mihomo 订阅，为指定平台提供稳定采集出口',
+    lark: '配置飞书自建应用，接收文本、链接、文件、图片和语音',
+    fetch_routing: '逐个平台选择服务器直连或订阅代理',
   };
 
   return (
@@ -261,7 +274,7 @@ export default function SettingsPage() {
             <div>
               <h2 className="font-semibold text-[var(--foreground)]">开源与版本</h2>
               <p className="text-sm text-[var(--text-secondary)] mt-1">
-                Trove AI 是开源私有化知识管理 Agent；这里显示当前部署版本和公开仓维护入口。
+                Trove AI 是开源私有化部署工具；这里显示当前部署版本和公开仓维护入口。
               </p>
             </div>
           </div>
@@ -322,7 +335,7 @@ export default function SettingsPage() {
           {updateInfo && (
             <div className={`text-xs px-3 py-2 rounded-lg border flex items-center gap-2 ${
               updateInfo.has_update
-                ? 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800 text-yellow-800 dark:text-yellow-200'
+                ? 'bg-[var(--warning-light)] border-[var(--warning)] text-[var(--foreground)]'
                 : updateInfo.ok
                   ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-800 dark:text-green-200'
                   : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-800 dark:text-red-200'
@@ -331,16 +344,19 @@ export default function SettingsPage() {
               <span>
                 {updateInfo.has_update
                   ? `发现新版本 v${updateInfo.latest}`
-                  : updateInfo.message}
+                  : updateInfo.ok
+                    ? `已是最新版本 v${updateInfo.current}`
+                    : updateInfo.message}
               </span>
-              {updateInfo.release_url && (
+              {updateInfo.has_update && updateInfo.release_url && (
                 <a
                   href={updateInfo.release_url}
                   target="_blank"
                   rel="noreferrer"
-                  className="underline underline-offset-2"
+                  className="inline-flex items-center gap-1 underline"
                 >
                   查看
+                  <ExternalLink size={11} />
                 </a>
               )}
             </div>
@@ -540,7 +556,7 @@ export default function SettingsPage() {
       )}
 
       <div className="text-center text-xs text-[var(--text-tertiary)] py-4">
-        Trove AI v{versionInfo?.version || '1.3.0'}
+        Trove AI v{versionInfo?.version || '1.4.0'}
       </div>
     </div>
   );

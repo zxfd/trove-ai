@@ -132,7 +132,28 @@ To enable:
 4. Uncomment the `wechat-bot` service in `docker-compose.yml`
 5. `docker compose up -d wechat-bot`
 
-## 10. Troubleshooting
+## 10. Feishu Bot (optional)
+
+1. Create an enterprise self-built app in Feishu Open Platform and enable Bot capability.
+2. Grant message read/send and message-resource download permissions, then subscribe to `im.message.receive_v1`.
+3. In Trove AI System Management, fill in App ID, App Secret, and Verification Token, test, then enable the Bot.
+4. Set the Feishu event callback URL to `https://your-trove-host/api/lark/events`. Event encryption is not enabled in this release; leave Feishu event encryption disabled and use HTTPS.
+5. A user opens Personal Settings, generates a six-digit code, then sends `/bind 123456` to the Bot in a private chat.
+
+Private text, URLs, files, images, and voice input are supported. In group chats the Bot only handles messages that mention it. Agent write operations show a preview first and run only after the user replies "确认" or "执行".
+
+## 11. Clash/Mihomo subscription proxy (optional)
+
+The bundled Compose stack starts Mihomo on the internal Docker network; its proxy and controller ports are not published to the host.
+
+1. Open System Management → Subscription Proxy.
+2. Enable it and paste a Clash-compatible subscription URL. Keep the default internal proxy/controller addresses.
+3. Test and save. Trove generates a restricted Mihomo config and hot-reloads the sidecar.
+4. Open Collection Routing and choose direct or subscription proxy for each supported platform.
+
+The subscription URL is a credential: Trove masks it in the UI and never commits it. Back up `backend/app/config_store.json` securely. To inspect proxy health, use `docker compose logs mihomo`.
+
+## 12. Troubleshooting
 
 | Symptom | Check |
 |---------|-------|
@@ -142,9 +163,9 @@ To enable:
 | Embedding model takes forever | Local fallback downloads ~150 MB on first use; persists across restarts |
 | Migrations show `InFailedSQLTransactionError` warnings | Cosmetic; subsequent statements roll forward fine |
 
-## 11. Updating
+## 13. Updating
 
-Trove AI doesn't have semver yet. To update:
+Trove AI publishes semantic versions and release notes. To update:
 
 ```bash
 git pull
@@ -155,7 +176,7 @@ docker compose up -d
 Backend migrations run automatically on backend start. DB schema changes that
 require manual intervention will be flagged in release notes.
 
-## 12. Uninstall
+## 14. Uninstall
 
 ```bash
 docker compose down -v       # ⚠️ -v drops the postgres volume — your data is gone

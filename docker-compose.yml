@@ -35,6 +35,25 @@ services:
     container_name: trove-redis
     restart: unless-stopped
 
+  mihomo-init:
+    image: busybox:1.36
+    command: sh -c 'test -f /config/config.yaml || cp /bootstrap/config.default.yaml /config/config.yaml'
+    volumes:
+      - mihomo-config:/config
+      - ./deploy/mihomo:/bootstrap:ro
+    restart: "no"
+
+  mihomo:
+    image: ghcr.io/metacubex/mihomo:latest
+    container_name: trove-mihomo
+    command: -d /root/.config/mihomo
+    depends_on:
+      mihomo-init:
+        condition: service_completed_successfully
+    volumes:
+      - mihomo-config:/root/.config/mihomo
+    restart: unless-stopped
+
   backend:
     build:
       context: ./backend
@@ -54,13 +73,19 @@ services:
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       # Used by wechat-bot integration if enabled
       SERVICE_TOKENS: ${SERVICE_TOKENS:-}
+      CHANNEL_BACKEND_URL: http://backend:8000
+      MIHOMO_CONFIG_PATH: /mihomo-config/config.yaml
+      MIHOMO_CONTAINER_CONFIG_PATH: /root/.config/mihomo/config.yaml
+      MIHOMO_CONTROLLER_SECRET: ${MIHOMO_CONTROLLER_SECRET:-}
       TROVE_ENV: production
     depends_on:
       - postgres
       - redis
+      - mihomo
     volumes:
       # Persist user-configured LLM/embedding settings across container restarts
       - ./backend/app/config_store.json:/app/app/config_store.json
+      - mihomo-config:/mihomo-config
     restart: unless-stopped
 
   # OPTIONAL: WeChat bot worker — uncomment if you have wechat bot credentials set up.
@@ -92,3 +117,4 @@ services:
 
 volumes:
   pgdata:
+  mihomo-config:
