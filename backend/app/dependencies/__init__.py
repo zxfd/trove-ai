@@ -107,13 +107,6 @@ async def get_current_user(
     Raises 401 if token is missing or invalid, or if user is inactive/deleted.
     """
     if not credentials:
-        # No token — return first active user as default (browser direct API calls)
-        result = await db.execute(
-            select(User).where(User.is_active == True).order_by(User.created_at).limit(1)
-        )
-        default_user = result.scalar_one_or_none()
-        if default_user:
-            return default_user
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="请先登录",
