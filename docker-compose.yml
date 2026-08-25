@@ -88,20 +88,19 @@ services:
       - mihomo-config:/mihomo-config
     restart: unless-stopped
 
-  # OPTIONAL: WeChat bot worker — uncomment if you have wechat bot credentials set up.
-  # Requires SERVICE_TOKEN_WECHAT_BOT in .env and wechat_accounts seeded via the API.
-  # wechat-bot:
-  #   image: trove-backend:latest
-  #   container_name: trove-wechat-bot
-  #   command: python -m app.wechat_bot
-  #   environment:
-  #     DATABASE_URL: postgresql+asyncpg://trove:${POSTGRES_PASSWORD}@postgres:5432/trove
-  #     TROVE_BASE: http://backend:8000
-  #     TROVE_TOKEN: ${SERVICE_TOKEN_WECHAT_BOT:-}
-  #   depends_on:
-  #     - backend
-  #     - postgres
-  #   restart: unless-stopped
+  # WeChat ingress worker. The user-facing QR binding still happens in Trove settings.
+  wechat-bot:
+    image: trove-backend:latest
+    container_name: trove-wechat-bot
+    command: python -m app.wechat_bot
+    environment:
+      DATABASE_URL: postgresql+asyncpg://trove:${POSTGRES_PASSWORD}@postgres:5432/trove
+      TROVE_BASE: http://backend:8000
+      TROVE_TOKEN: ${SERVICE_TOKEN_WECHAT_BOT:?set SERVICE_TOKEN_WECHAT_BOT in .env}
+    depends_on:
+      - backend
+      - postgres
+    restart: unless-stopped
 
   frontend:
     build:
