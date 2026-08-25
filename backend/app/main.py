@@ -172,6 +172,7 @@ ALLOWED_IMAGE_DOMAINS = {
     'xhscdn.com',          # XHS image CDN (subdomains via endswith match)
     'douyinpic.com',       # Douyin image CDN
     'douyinvod.com',       # Douyin video/thumb CDN
+    'pbs.twimg.com',       # X / Twitter image CDN
 }
 
 
@@ -200,6 +201,8 @@ async def proxy_image(url: str = Query(..., description="Original image URL to p
         referer = 'https://www.xiaohongshu.com/'
     elif 'douyinpic.com' in domain or 'douyinvod.com' in domain:
         referer = 'https://www.douyin.com/'
+    elif 'twimg.com' in domain:
+        referer = 'https://x.com/'
     else:
         referer = 'https://mp.weixin.qq.com/'
 

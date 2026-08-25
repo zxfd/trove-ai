@@ -877,7 +877,7 @@ export default function ReaderPage({ params }: { params: { id: string } }) {
           </div>
 
           {/* Cover image */}
-          {article.cover_image && (
+          {article.cover_image && article.source_platform !== 'x' && (
             <div className="mb-6 rounded-2xl overflow-hidden shadow-md">
               <img
                 src={article.cover_image}

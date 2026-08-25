@@ -147,6 +147,10 @@ class ParserService:
         if platform == 'xhs':
             return await self._fetch_xhs(url)
 
+        # X / Twitter — generic text extraction + dedicated media extraction.
+        if platform == 'x':
+            return await self._fetch_x(url)
+
         # P5: 通用网页 — trafilatura 优先,内容过短再 Playwright 渲染,最后 BeautifulSoup 兜底
         # 视频号(channels.weixin.qq.com)、CSDN、掘金、Medium、少数派、36氪 等 JS 动态页同走此路
         return await self._fetch_generic(url, platform)
@@ -232,10 +236,8 @@ class ParserService:
         author = og_meta.get('author') or self._extract_author(soup, platform)
         cover = og_meta.get('image') or self._extract_cover(soup, platform)
 
-        # WeChat/视频号 封面图走代理(mmbiz.qpic.cn 有 referer 防盗链)
-        if cover and 'mmbiz.qpic.cn' in cover:
-            from urllib.parse import quote
-            cover = f"/api/images/proxy?url={quote(cover, safe='')}"
+        # Hotlink-protected / externally unstable covers go through Trove proxy.
+        cover = self._proxy_url(cover)
 
         return {
             'title': title,
@@ -266,6 +268,369 @@ class ParserService:
                 if self._text_len(alt['raw_content']) > self._text_len(result['raw_content']):
                     logger.info(f"generic fetch: playwright render improved content for {url}")
                     result = alt
+        return result
+
+    async def _fetch_x(self, url: str) -> Dict:
+        """Fetch X/Twitter text and restore media images to their original positions."""
+        result = await self._fetch_generic(url, 'x')
+
+        try:
+            from playwright.async_api import async_playwright
+        except ImportError:
+            return result
+
+        import asyncio
+        import re
+
+        status_match = re.search(r'/status/(\d+)', url)
+        status_id = status_match.group(1) if status_match else None
+
+        media_items = []
+        seen = set()
+
+        def normalize_text(value):
+            return re.sub(r'\s+', ' ', value or '').strip()
+
+        def add_items(items):
+            for item in items:
+                src = (item.get('src') or '').strip()
+
+                if 'pbs.twimg.com/media/' not in src:
+                    continue
+
+                # X frequently exposes the same media with different size params.
+                dedupe_key = src.split('?', 1)[0]
+
+                if dedupe_key in seen:
+                    continue
+
+                seen.add(dedupe_key)
+
+                media_items.append({
+                    'src': src,
+                    'before': normalize_text(item.get('before')),
+                    'after': normalize_text(item.get('after')),
+                })
+
+        async with async_playwright() as pw:
+            browser = await pw.chromium.launch(
+                headless=True,
+                proxy=self._playwright_proxy('x'),
+                args=[
+                    '--disable-blink-features=AutomationControlled',
+                    '--disable-dev-shm-usage',
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                ],
+            )
+
+            context = await browser.new_context(
+                user_agent=(
+                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                    'AppleWebKit/537.36 (KHTML, like Gecko) '
+                    'Chrome/124.0.0.0 Safari/537.36'
+                ),
+                viewport={'width': 1920, 'height': 1080},
+                locale='zh-CN',
+            )
+
+            page = await context.new_page()
+
+            try:
+                await page.goto(
+                    url,
+                    wait_until='domcontentloaded',
+                    timeout=30000,
+                )
+            except Exception as exc:
+                logger.warning(f"X media navigation failed for {url}: {exc}")
+
+            await asyncio.sleep(3)
+
+            target = None
+
+            if status_id:
+                candidate = page.locator(
+                    f'article:has(a[href*="/status/{status_id}"])'
+                ).first
+
+                if await candidate.count():
+                    target = candidate
+
+            if target is None:
+                articles = page.locator('article')
+                if await articles.count():
+                    target = articles.first
+
+            if target is not None:
+
+                async def collect():
+                    try:
+                        items = await target.evaluate("""
+                        root => {
+                            const seq = [];
+
+                            const walker = document.createTreeWalker(
+                                root,
+                                NodeFilter.SHOW_ELEMENT
+                            );
+
+                            while (walker.nextNode()) {
+                                const el = walker.currentNode;
+
+                                if (
+                                    el.tagName === 'IMG' &&
+                                    (el.src || '').includes('pbs.twimg.com/media/')
+                                ) {
+                                    seq.push({
+                                        type: 'IMG',
+                                        src: el.src
+                                    });
+                                    continue;
+                                }
+
+                                if (
+                                    ['DIV', 'SPAN', 'P'].includes(el.tagName) &&
+                                    el.children.length === 0
+                                ) {
+                                    const text = (el.innerText || '')
+                                        .trim()
+                                        .replace(/\\s+/g, ' ');
+
+                                    if (text.length >= 10) {
+                                        seq.push({
+                                            type: 'TEXT',
+                                            value: text.slice(0, 300)
+                                        });
+                                    }
+                                }
+                            }
+
+                            const out = [];
+
+                            for (let i = 0; i < seq.length; i++) {
+                                if (seq[i].type !== 'IMG') continue;
+
+                                let before = '';
+                                let after = '';
+
+                                for (let j = i - 1; j >= 0; j--) {
+                                    if (seq[j].type === 'TEXT') {
+                                        before = seq[j].value;
+                                        break;
+                                    }
+                                }
+
+                                for (let j = i + 1; j < seq.length; j++) {
+                                    if (seq[j].type === 'TEXT') {
+                                        after = seq[j].value;
+                                        break;
+                                    }
+                                }
+
+                                out.push({
+                                    src: seq[i].src,
+                                    before,
+                                    after
+                                });
+                            }
+
+                            return out;
+                        }
+                        """)
+
+                        add_items(items)
+
+                    except Exception as exc:
+                        logger.debug(f"X media collect failed: {exc}")
+
+                # Initial visible DOM.
+                await collect()
+
+                # Walk through the target post so lazy-loaded media appear.
+                for fraction in (0.0, 0.2, 0.4, 0.6, 0.8, 1.0):
+                    try:
+                        box = await target.bounding_box()
+
+                        if not box:
+                            continue
+
+                        y = max(
+                            0,
+                            box['y'] + box['height'] * fraction - 300
+                        )
+
+                        await page.evaluate(
+                            "(y) => window.scrollTo(0, y)",
+                            y,
+                        )
+
+                        await asyncio.sleep(1.2)
+                        await collect()
+
+                    except Exception:
+                        continue
+
+                # Extra lazy-load trigger.
+                try:
+                    await page.mouse.wheel(0, 900)
+                    await asyncio.sleep(1)
+                    await collect()
+
+                    await page.mouse.wheel(0, -900)
+                    await asyncio.sleep(1)
+                    await collect()
+
+                except Exception:
+                    pass
+
+            await browser.close()
+
+        if not media_items:
+            logger.info(f"X media extraction: no media found for {url}")
+            return result
+
+        # ------------------------------------------------------------
+        # Restore media to its original position inside generic HTML.
+        # Generic extraction gives us cleaner text than raw X DOM;
+        # BEFORE/AFTER anchors tell us where each image belongs.
+        # ------------------------------------------------------------
+        html = result.get('raw_content') or ''
+        soup = BeautifulSoup(html, 'lxml')
+        root = soup.body or soup
+
+        # Remove X media already present, if the generic extractor happened
+        # to retain one. We will reinsert the complete ordered set below.
+        for img in list(root.find_all('img')):
+            src = img.get('src') or ''
+
+            if (
+                'pbs.twimg.com/media/' in src
+                or 'pbs.twimg.com%2Fmedia%2F' in src
+            ):
+                parent = img.parent
+
+                if (
+                    parent
+                    and parent.name == 'p'
+                    and not parent.get_text(strip=True)
+                ):
+                    parent.decompose()
+                else:
+                    img.decompose()
+
+        def find_anchor(anchor):
+            anchor = normalize_text(anchor)
+
+            if not anchor:
+                return None
+
+            # Prefer semantic block elements so images are inserted between
+            # paragraphs/headings instead of inside spans.
+            preferred = root.find_all([
+                'p',
+                'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+                'li',
+                'blockquote',
+                'pre',
+            ])
+
+            for node in preferred:
+                text = normalize_text(
+                    node.get_text(' ', strip=True)
+                )
+
+                if not text:
+                    continue
+
+                if (
+                    text == anchor
+                    or anchor in text
+                    or (len(text) >= 10 and text in anchor)
+                ):
+                    return node
+
+            # Rare fallback when generic HTML kept text in div containers.
+            for node in root.find_all('div'):
+                text = normalize_text(
+                    node.get_text(' ', strip=True)
+                )
+
+                if text == anchor:
+                    return node
+
+            return None
+
+        tails = {}
+        fallback_count = 0
+        anchored_count = 0
+        proxied_urls = []
+
+        for index, item in enumerate(media_items, 1):
+            proxied = self._proxy_url(item['src']) or item['src']
+            proxied_urls.append(proxied)
+
+            wrapper = soup.new_tag('p')
+            img = soup.new_tag(
+                'img',
+                src=proxied,
+                alt=f'X media {index}',
+            )
+            wrapper.append(img)
+
+            before_node = find_anchor(item.get('before'))
+            after_node = find_anchor(item.get('after'))
+
+            if before_node is not None:
+                # Multiple adjacent images can share the same BEFORE anchor.
+                # Keep their original discovery order.
+                key = ('before', id(before_node))
+                tail = tails.get(key)
+
+                if tail is not None:
+                    tail.insert_after(wrapper)
+                else:
+                    before_node.insert_after(wrapper)
+
+                tails[key] = wrapper
+                anchored_count += 1
+                continue
+
+            if after_node is not None:
+                key = ('after', id(after_node))
+                tail = tails.get(key)
+
+                if tail is not None:
+                    tail.insert_after(wrapper)
+                else:
+                    after_node.insert_before(wrapper)
+
+                tails[key] = wrapper
+                anchored_count += 1
+                continue
+
+            # Only use document-end fallback when neither anchor survived
+            # the generic extraction.
+            root.append(wrapper)
+            fallback_count += 1
+
+        if soup.body:
+            result['raw_content'] = soup.body.decode_contents()
+        else:
+            result['raw_content'] = str(soup)
+
+        # First media remains the list/card cover, while the reader page
+        # suppresses the duplicate X cover and displays images in-body.
+        result['cover_image'] = proxied_urls[0]
+
+        logger.info(
+            f"X media extraction success: "
+            f"{len(media_items)} image(s), "
+            f"anchored={anchored_count}, "
+            f"fallback={fallback_count}, "
+            f"url={url}"
+        )
+
         return result
 
     @staticmethod
@@ -348,6 +713,7 @@ class ParserService:
         'mmbiz.qpic.cn', 'mmbiz.qlogo.cn', 'mmecoa.qpic.cn',  # WeChat / 视频号
         'xhscdn.com',                                           # XHS
         'douyinpic.com', 'douyinvod.com',                       # Douyin
+        'pbs.twimg.com',                                        # X / Twitter
     )
 
     @classmethod
