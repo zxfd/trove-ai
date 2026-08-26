@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard, BookOpen, GitGraph, Route,
   Search, Settings, X, Sun, Moon, Menu,
-  Users, LogOut, Library, Github
+  Users, LogOut, Library, Github, BookmarkPlus
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useTheme } from '@/components/ThemeProvider';
@@ -15,6 +15,7 @@ import { useAuth } from '@/contexts/AuthContext';
 const commonNavItems = [
   { href: '/', label: '仪表盘', icon: LayoutDashboard },
   { href: '/library', label: '知识库', icon: BookOpen },
+  { href: '/quick-add', label: '快速入库', icon: BookmarkPlus },
   { href: '/graph', label: '知识图谱', icon: GitGraph },
   { href: '/concepts', label: '概念词条', icon: Library },
   { href: '/paths', label: '学习路线', icon: Route },

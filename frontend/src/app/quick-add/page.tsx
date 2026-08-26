@@ -81,9 +81,13 @@ export default function QuickAddPage() {
           <div className="mt-6 space-y-5">
             <section className="rounded-xl bg-[var(--bg-secondary)] p-4">
               <h2 className="font-semibold text-[var(--text-primary)]">电脑浏览器</h2>
-              <p className="mt-1 text-sm text-[var(--text-secondary)]">
-                新建一个收藏，将下面复制的内容粘贴到收藏的网址栏。以后在任意网页点击该收藏即可入库。
-              </p>
+              <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm leading-6 text-[var(--text-secondary)]">
+                <li>保持当前浏览器已经登录 Trove。</li>
+                <li>点击下方按钮复制收藏代码。</li>
+                <li>在 Chrome 收藏栏右键选择“添加网页”；Safari 可先新建书签再编辑地址。</li>
+                <li>名称填“存入 Trove”，网址填刚复制的整段代码。</li>
+                <li>以后打开任意文章，点击收藏栏里的“存入 Trove”。</li>
+              </ol>
               <button
                 type="button"
                 onClick={copyBookmarklet}
@@ -96,10 +100,19 @@ export default function QuickAddPage() {
 
             <section className="rounded-xl bg-[var(--bg-secondary)] p-4">
               <h2 className="font-semibold text-[var(--text-primary)]">iPhone / iPad</h2>
-              <p className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">
-                在“快捷指令”中接收分享菜单的文本或 URL，先做 URL 编码，再打开
-                <code className="mx-1 break-all text-xs">{origin || '当前 Trove 地址'}/quick-add?text=编码后的内容</code>。
-                登录一次后，X、Safari 和普通网页都可以从系统分享菜单直接入库。
+              <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm leading-6 text-[var(--text-secondary)]">
+                <li>先在 Safari 登录一次当前 Trove 地址。</li>
+                <li>在“快捷指令”中新建快捷指令，命名“存入 Trove”。</li>
+                <li>打开快捷指令详细信息，启用“在共享表单中显示”，输入类型只保留 URL 和文本。</li>
+                <li>添加“URL 编码（URL Encode）”操作，输入选择“快捷指令输入”。</li>
+                <li>添加“URL”操作，内容由下面的固定前缀和上一步的编码结果组成。</li>
+                <li>最后添加“打开 URL”操作。</li>
+              </ol>
+              <code className="mt-3 block break-all rounded-lg bg-[var(--bg-primary)] p-3 text-left text-xs text-[var(--text-secondary)]">
+                {origin || '当前 Trove 地址'}/quick-add?text=编码后的快捷指令输入
+              </code>
+              <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
+                保存后，在 X、Safari 或其他支持系统共享表单的 App 中选择“分享 → 存入 Trove”。如果登录过期，会先登录再继续原来的入库任务。
               </p>
             </section>
           </div>
