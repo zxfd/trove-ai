@@ -13,7 +13,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
     if (loading) return;
     // Don't redirect on the login page itself
     if (!isAuthenticated && pathname !== '/login') {
-      const nextPath = `${window.location.pathname}${window.location.search}`;
+      const nextPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
       router.replace(`/login?next=${encodeURIComponent(nextPath)}`);
     }
   }, [isAuthenticated, loading, pathname, router]);

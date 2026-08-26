@@ -22,12 +22,13 @@ type AddState =
 
 export default function QuickAddPage() {
   const searchParams = useSearchParams();
-  const started = useRef(false);
+  const startedUrl = useRef('');
   const [state, setState] = useState<AddState>({ status: 'idle' });
   const [origin, setOrigin] = useState('');
+  const [hashInput, setHashInput] = useState('');
   const [copied, setCopied] = useState(false);
 
-  const sharedText = searchParams.get('text') || searchParams.get('url') || '';
+  const sharedText = searchParams.get('text') || searchParams.get('url') || hashInput;
   const targetUrl = useMemo(() => {
     const extracted = extractUrl(sharedText);
     if (extracted) return extracted;
@@ -37,11 +38,27 @@ export default function QuickAddPage() {
 
   useEffect(() => {
     setOrigin(window.location.origin);
+    const updateHashInput = () => {
+      const rawHash = window.location.hash.slice(1);
+      if (!rawHash || /https?:\/\//i.test(rawHash)) {
+        setHashInput(rawHash);
+        return;
+      }
+      try {
+        setHashInput(decodeURIComponent(rawHash));
+      } catch {
+        setHashInput(rawHash);
+      }
+    };
+
+    updateHashInput();
+    window.addEventListener('hashchange', updateHashInput);
+    return () => window.removeEventListener('hashchange', updateHashInput);
   }, []);
 
   useEffect(() => {
-    if (!targetUrl || started.current) return;
-    started.current = true;
+    if (!targetUrl || startedUrl.current === targetUrl) return;
+    startedUrl.current = targetUrl;
     setState({ status: 'adding' });
 
     api.createArticle(targetUrl)
@@ -100,20 +117,34 @@ export default function QuickAddPage() {
 
             <section className="rounded-xl bg-[var(--bg-secondary)] p-4">
               <h2 className="font-semibold text-[var(--text-primary)]">iPhone / iPad</h2>
-              <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm leading-6 text-[var(--text-secondary)]">
-                <li>先在 Safari 登录一次当前 Trove 地址。</li>
-                <li>在“快捷指令”中新建快捷指令，命名“存入 Trove”。</li>
-                <li>打开快捷指令详细信息，启用“在共享表单中显示”，输入类型只保留 URL 和文本。</li>
-                <li>添加“URL 编码（URL Encode）”操作，输入选择“快捷指令输入”。</li>
-                <li>添加“URL”操作，内容由下面的固定前缀和上一步的编码结果组成。</li>
-                <li>最后添加“打开 URL”操作。</li>
-              </ol>
-              <code className="mt-3 block break-all rounded-lg bg-[var(--bg-primary)] p-3 text-left text-xs text-[var(--text-secondary)]">
-                {origin || '当前 Trove 地址'}/quick-add?text=编码后的快捷指令输入
-              </code>
-              <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
-                保存后，在 X、Safari 或其他支持系统共享表单的 App 中选择“分享 → 存入 Trove”。如果登录过期，会先登录再继续原来的入库任务。
+              <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
+                先在 Safari 登录一次当前 Trove 地址，再安装已经配置好的“存入 Trove”。它会自动出现在系统共享菜单，并从分享内容中提取原文 URL。
               </p>
+              <a
+                href="https://www.icloud.com/shortcuts/8c15532a72f2433e81a8669ff6989c19"
+                target="_blank"
+                rel="noreferrer"
+                className="mt-3 inline-flex h-10 items-center gap-2 rounded-lg bg-[var(--accent)] px-4 text-sm font-semibold text-white"
+              >
+                一键安装“存入 Trove” <ExternalLink size={16} />
+              </a>
+              <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">
+                Apple 会要求再确认一次“添加快捷指令”，这是 iOS 不允许网页绕过的安全确认。安装后，在 X、Safari 或其他 App 中选择“分享 → 存入 Trove”。
+              </p>
+              <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
+                分享里即使带图片，只要同时包含原文 URL 就能入库，正文图片由 Trove 从原网页抓取；只有图片、没有来源 URL 的内容不属于文章快速入库。
+              </p>
+              <details className="mt-3 text-sm text-[var(--text-secondary)]">
+                <summary className="cursor-pointer font-medium text-[var(--text-primary)]">查看手动配置方法</summary>
+                <ol className="mt-2 list-decimal space-y-1 pl-5 leading-6">
+                  <li>新建“存入 Trove”，并启用“在共享表单中显示”。</li>
+                  <li>依次添加“从输入中获取 URL”“文本”“打开 URL”。</li>
+                  <li>文本内容由下面的固定前缀和上一步的“URL”变量组成。</li>
+                </ol>
+                <code className="mt-2 block break-all rounded-lg bg-[var(--bg-primary)] p-3 text-left text-xs">
+                  {origin || '当前 Trove 地址'}/quick-add#URL
+                </code>
+              </details>
             </section>
           </div>
         </div>
