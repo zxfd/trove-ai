@@ -1,13 +1,18 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { BookOpen, Loader2, AlertCircle, Eye, EyeOff, ArrowRight } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { login, isAuthenticated, loading: authLoading } = useAuth();
+  const requestedPath = searchParams.get('next');
+  const nextPath = requestedPath?.startsWith('/') && !requestedPath.startsWith('//')
+    ? requestedPath
+    : '/';
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -24,9 +29,9 @@ export default function LoginPage() {
   // Redirect if already authenticated
   useEffect(() => {
     if (!authLoading && isAuthenticated) {
-      router.replace('/');
+      router.replace(nextPath);
     }
-  }, [authLoading, isAuthenticated, router]);
+  }, [authLoading, isAuthenticated, nextPath, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,7 +46,7 @@ export default function LoginPage() {
     setSubmitting(true);
     try {
       await login(trimmedUsername, password);
-      router.replace('/');
+      router.replace(nextPath);
     } catch (err: any) {
       setError(err.message || '登录失败，请检查用户名和密码');
     } finally {
