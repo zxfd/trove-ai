@@ -7,6 +7,7 @@ import {
   AlertCircle,
   CheckCircle2,
   Clipboard,
+  Download,
   ExternalLink,
   Loader2,
 } from 'lucide-react';
@@ -98,6 +99,32 @@ export default function QuickAddPage() {
           <div className="mt-6 space-y-5">
             <section className="rounded-xl bg-[var(--bg-secondary)] p-4">
               <h2 className="font-semibold text-[var(--text-primary)]">电脑浏览器</h2>
+              <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
+                Chrome 推荐安装“存入 Trove”插件。点击工具栏图标即可保存当前页，也可以右键网页或链接直接保存。
+              </p>
+              <a
+                href="/downloads/trove-save-extension.zip"
+                download
+                className="mt-3 inline-flex h-10 items-center gap-2 rounded-lg bg-[var(--accent)] px-4 text-sm font-semibold text-white"
+              >
+                <Download size={16} />
+                下载 Chrome 插件
+              </a>
+              <details className="mt-3 text-sm text-[var(--text-secondary)]">
+                <summary className="cursor-pointer font-medium text-[var(--text-primary)]">查看安装方法</summary>
+                <ol className="mt-2 list-decimal space-y-1 pl-5 leading-6">
+                  <li>解压下载的 ZIP。</li>
+                  <li>在 Chrome 打开 chrome://extensions，并开启“开发者模式”。</li>
+                  <li>点击“加载已解压的扩展程序”，选择解压后的 trove-save-extension 文件夹。</li>
+                  <li>把“存入 Trove”固定到工具栏；首次使用前先登录 Trove。</li>
+                </ol>
+                <p className="mt-2 leading-6">
+                  插件只申请当前页面、右键菜单和插件设置权限，不读取浏览历史、Cookie、密码或网页正文。
+                </p>
+              </details>
+
+              <details className="mt-4 border-t border-[var(--border-color)] pt-4 text-sm text-[var(--text-secondary)]">
+                <summary className="cursor-pointer font-medium text-[var(--text-primary)]">不安装插件：使用收藏栏按钮</summary>
               <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm leading-6 text-[var(--text-secondary)]">
                 <li>保持当前浏览器已经登录 Trove。</li>
                 <li>点击下方按钮复制收藏代码。</li>
@@ -113,6 +140,7 @@ export default function QuickAddPage() {
                 <Clipboard size={16} />
                 {copied ? '已复制' : '复制收藏按钮代码'}
               </button>
+              </details>
             </section>
 
             <section className="rounded-xl bg-[var(--bg-secondary)] p-4">

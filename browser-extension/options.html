@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>存入 Trove 设置</title>
+    <link rel="stylesheet" href="options.css">
+  </head>
+  <body>
+    <main>
+      <div class="brand">
+        <img src="icons/icon48.png" alt="">
+        <div>
+          <h1>存入 Trove</h1>
+          <p>Chrome 一键入库插件</p>
+        </div>
+      </div>
+
+      <section>
+        <label for="trove-url">Trove 地址</label>
+        <input id="trove-url" type="url" spellcheck="false" autocomplete="off">
+        <p class="hint">只保存服务地址，不保存账号、密码、API Key 或同步 Token。</p>
+        <div class="actions">
+          <button id="save" type="button">保存设置</button>
+          <button id="open" class="secondary" type="button">打开 Trove</button>
+        </div>
+        <p id="status" role="status" aria-live="polite"></p>
+      </section>
+
+      <section class="usage">
+        <h2>使用方法</h2>
+        <ol>
+          <li>在 Chrome 中登录一次 Trove。</li>
+          <li>浏览文章时点击工具栏里的 Trove 图标。</li>
+          <li>也可以右键网页空白处或页面中的链接，选择“存入 Trove”。</li>
+        </ol>
+        <p>插件只传递原网页 URL，正文和图片仍由你的 Trove 服务端抓取。</p>
+      </section>
+    </main>
+    <script src="options.js"></script>
+  </body>
+</html>
