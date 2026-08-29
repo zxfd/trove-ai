@@ -17,9 +17,8 @@ from app.database import async_session
 from app.dependencies import get_current_user
 from app.models import User
 from app.services.agent_memory import get_or_create_session
-from app.services.tool_agent import (
-    run_tool_agent, _execute_tool, _summarize_result, WRITE_TOOLS,
-)
+from app.services.configured_tool_agent import run_tool_agent
+from app.services.tool_agent import _execute_tool, _summarize_result, WRITE_TOOLS
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["agent-chat"])
