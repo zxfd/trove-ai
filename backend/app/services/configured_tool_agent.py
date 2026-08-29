@@ -27,9 +27,8 @@ logger = logging.getLogger("trove.tool-agent.configured-llm")
 RETRY_STATUS_CODES = {408, 409, 425, 429, 500, 502, 503, 504}
 RETRY_DELAYS = (1.0, 2.0)
 
-
-class AgentLLMBusyError(RuntimeError):
-    """The configured upstream chat provider is temporarily unavailable."""
+# Preserve the legacy loop's special handling for temporary upstream failures.
+AgentLLMBusyError = _legacy.LLMServiceBusyError
 
 
 def _agent_llm_config() -> tuple[str, str, str]:
