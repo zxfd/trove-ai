@@ -12,7 +12,7 @@ from app.database import async_session, get_db
 from app.dependencies import get_current_user
 from app.models import User
 from app.services.research_agent import run_research
-from app.services.tool_agent import run_tool_agent
+from app.services.configured_tool_agent import run_tool_agent
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/research", tags=["research"])
