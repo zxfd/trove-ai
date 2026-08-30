@@ -71,6 +71,8 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       SILICONFLOW_API_KEY: ${SILICONFLOW_API_KEY:-}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      # Persist local embedding models outside /tmp and across container recreation.
+      FASTEMBED_CACHE_PATH: /var/cache/fastembed
       # Used by wechat-bot integration if enabled
       SERVICE_TOKENS: ${SERVICE_TOKENS:-}
       CHANNEL_BACKEND_URL: http://backend:8000
@@ -86,6 +88,7 @@ services:
       # Persist user-configured LLM/embedding settings across container restarts
       - ./backend/app/config_store.json:/app/app/config_store.json
       - mihomo-config:/mihomo-config
+      - fastembed-cache:/var/cache/fastembed
     restart: unless-stopped
 
   # WeChat ingress worker. The user-facing QR binding still happens in Trove settings.
@@ -117,3 +120,4 @@ services:
 volumes:
   pgdata:
   mihomo-config:
+  fastembed-cache:
