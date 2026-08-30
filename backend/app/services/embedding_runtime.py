@@ -9,9 +9,9 @@ Goals:
 - make fresh local installs use a 1024-dim multilingual model by default.
 
 FastEmbed Python does not yet ship BAAI/bge-m3 in its native registry, but it
-supports custom ONNX models.  The registration below mirrors the upstream
-FastEmbed BGE-M3 proposal: CLS pooling + normalization, 1024 dimensions,
-BAAI/bge-m3's ONNX graph plus its external data file.
+supports custom ONNX models. The registration below mirrors the pending
+upstream BGE-M3 support and includes all external ONNX tensor files published
+in the BAAI/bge-m3 repository.
 """
 from __future__ import annotations
 
@@ -52,7 +52,10 @@ def _register_bge_m3_if_needed() -> None:
         sources=ModelSource(hf=LOCAL_DEFAULT_MODEL),
         dim=VECTOR_DIM,
         model_file="onnx/model.onnx",
-        additional_files=["onnx/model.onnx_data"],
+        additional_files=[
+            "onnx/model.onnx_data",
+            "onnx/Constant_7_attr__value",
+        ],
         description="BGE-M3 multilingual dense embeddings (local ONNX fallback)",
         license="mit",
         size_in_gb=2.27,
@@ -138,7 +141,6 @@ async def _api_embedding(config: dict[str, Any], text: str, emb_type: str) -> li
     if isinstance(data.get("data"), list) and data["data"]:
         vector = data["data"][0].get("embedding") or []
     elif isinstance(data.get("vectors"), list) and data["vectors"]:
-        # Compatibility with providers that return {vectors:[[...]]}.
         vector = data["vectors"][0]
 
     if not vector:
@@ -164,9 +166,6 @@ async def _get_embedding(self, text: str, emb_type: str = "db") -> list[float]:
     try:
         return await _api_embedding(cfg, text, emb_type)
     except Exception as api_exc:
-        # A fallback is valid only if it uses the exact same embedding model.
-        # Using a different model would mix incompatible vector spaces with the
-        # already stored vectors and silently destroy semantic-search quality.
         logger.warning("Embedding API failed; trying same-model local fallback: %s", api_exc)
         try:
             return _local_embedding(text, model, emb_type)
@@ -229,8 +228,6 @@ def install_embedding_runtime() -> None:
     """Install runtime patches before routers import their function references."""
     import app.config_manager as config_manager
 
-    # Fix the broken fresh-install default: DB vector column is vector(1024), so
-    # the old 384-dim BAAI/bge-small-en-v1.5 default could never be stored.
     schema = CONFIG_SCHEMA.get("embedding", {})
     for field in schema.get("fields", []):
         if field.get("key") == "model" and field.get("default") == "BAAI/bge-small-en-v1.5":
